@@ -551,7 +551,8 @@ export class AppController {
   }
 
   refreshPreviewAppearance() {
-    this.refreshPreviewAppearance();
+    this.updatePreviewBackground();
+    this.updatePreviewBackgroundGrayscaleEffect();
   }
 
   async setTrafficLightVisibility(visible) {
