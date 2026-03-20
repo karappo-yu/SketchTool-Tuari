@@ -78,7 +78,7 @@ body {
     overflow: hidden;
     /* transition moved to #dynamic-background-layer */
 
-    /* Electron 拖动区域：将整个 body 设置为可拖动 */
+    /* Follow the original Electron window behavior: the full background is draggable. */
     -webkit-app-region: drag;
 }
 
@@ -127,8 +127,8 @@ body {
     position: relative;
     z-index: 1; /* CRITICAL: Must be higher than #dynamic-background-layer */
     background-color: transparent; /* Ensure app-container itself is transparent to show background layer */
-    
-    /* app-container 作为主内容区域，也应设为可拖动 */
+
+    /* Preserve the original drag behavior across the full background canvas. */
     -webkit-app-region: drag;
 }
 
@@ -863,35 +863,52 @@ body.light-theme #image-navigation-controls button:disabled {
     position: absolute;
     top: 10px; /* Slightly closer to edge */
     left: 10px; /* Slightly closer to edge */
-    background-color: #dc3545; /* Red background for the button */
+    background: radial-gradient(circle at 35% 35%, #ff6f7f 0%, #ff5166 30%, #ff4b5f 58%, #e13a50 100%);
     border: none;
-    font-size: 1.2em; /* Smaller font size for X */
-    color: #ffffff; /* White X by default */
+    font-size: 0;
+    color: transparent;
     cursor: pointer;
-    transition: background-color 0.2s ease, color 0.2s ease, opacity 0.3s ease; /* Add opacity to transition */
-    padding: 0; /* Remove padding to make it truly circular/small */
-    width: 20px; /* Smaller width */
-    height: 20px; /* Smaller height */
-    border-radius: 50%; /* Make it circular */
-    display: flex; /* Use flex to center the X inside */
+    transition: transform 0.15s ease, box-shadow 0.2s ease, opacity 0.3s ease, filter 0.2s ease;
+    padding: 0;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    display: flex;
     justify-content: center;
     align-items: center;
-    opacity: 0; /* Hidden by default */
-    pointer-events: none; /* Make it non-interactive when hidden */
-    z-index: 1; /* Ensure it's above other elements if needed */
-    /* 防止按钮成为拖动区域 */
+    opacity: 0;
+    pointer-events: none;
+    z-index: 1;
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.28) inset, 0 6px 10px rgba(0, 0, 0, 0.18);
     -webkit-app-region: no-drag;
 }
+#settings-modal-content .close-button::before,
+#settings-modal-content .close-button::after {
+    content: "";
+    position: absolute;
+    width: 11px;
+    height: 3.2px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.96);
+    box-shadow: 0 0.4px 0 rgba(0, 0, 0, 0.12);
+}
+#settings-modal-content .close-button::before {
+    transform: rotate(45deg);
+}
+#settings-modal-content .close-button::after {
+    transform: rotate(-45deg);
+}
 #settings-modal-content:hover .close-button {
-    opacity: 1; /* Show on parent hover */
-    pointer-events: auto; /* Make interactive on parent hover */
+    opacity: 1;
+    pointer-events: auto;
 }
 #settings-modal-content .close-button:hover {
-    color: #000000; /* Black color on button hover */
-    background-color: rgba(255, 255, 255, 0.8); /* Light background on hover for contrast */
+    transform: translateY(-0.5px) scale(1.03);
+    filter: saturate(1.05) brightness(1.02);
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.3) inset, 0 8px 12px rgba(0, 0, 0, 0.22);
 }
 body.light-theme #settings-modal-content .close-button:hover {
-    background-color: rgba(0, 0, 0, 0.3); /* Darker background on hover for light theme */
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.32) inset, 0 8px 12px rgba(0, 0, 0, 0.18);
 }
 
 /* NEW: Close button for Folder Browser View - uses the same .close-button class */
@@ -899,36 +916,54 @@ body.light-theme #settings-modal-content .close-button:hover {
     position: absolute;
     top: 10px; /* Consistent with settings modal */
     left: 10px; /* Consistent with settings modal */
-    background-color: #dc3545; /* Red background */
+    background: radial-gradient(circle at 35% 35%, #ff6f7f 0%, #ff5166 30%, #ff4b5f 58%, #e13a50 100%);
     border: none;
-    font-size: 1.2em;
-    color: #ffffff;
+    font-size: 0;
+    color: transparent;
     cursor: pointer;
-    transition: background-color 0.2s ease, color 0.2s ease, opacity 0.3s ease;
+    transition: transform 0.15s ease, box-shadow 0.2s ease, opacity 0.3s ease, filter 0.2s ease;
     padding: 0;
-    width: 20px;
-    height: 20px;
+    width: 22px;
+    height: 22px;
     border-radius: 50%;
     display: flex;
     justify-content: center;
     align-items: center;
-    opacity: 0; /* Hidden by default */
-    pointer-events: none; /* Non-interactive when hidden */
-    z-index: 1; /* Ensure it's above other elements */
+    opacity: 0;
+    pointer-events: none;
+    z-index: 1;
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.28) inset, 0 6px 10px rgba(0, 0, 0, 0.18);
     -webkit-app-region: no-drag;
+}
+#folder-browser-view .close-button::before,
+#folder-browser-view .close-button::after {
+    content: "";
+    position: absolute;
+    width: 11px;
+    height: 3.2px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.96);
+    box-shadow: 0 0.4px 0 rgba(0, 0, 0, 0.12);
+}
+#folder-browser-view .close-button::before {
+    transform: rotate(45deg);
+}
+#folder-browser-view .close-button::after {
+    transform: rotate(-45deg);
 }
 
 #folder-browser-view:hover .close-button {
-    opacity: 1; /* Show on parent hover */
-    pointer-events: auto; /* Make interactive on parent hover */
+    opacity: 1;
+    pointer-events: auto;
 }
 
 #folder-browser-view .close-button:hover {
-    color: #000000;
-    background-color: rgba(255, 255, 255, 0.8);
+    transform: translateY(-0.5px) scale(1.03);
+    filter: saturate(1.05) brightness(1.02);
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.3) inset, 0 8px 12px rgba(0, 0, 0, 0.22);
 }
 body.light-theme #folder-browser-view .close-button:hover {
-    background-color: rgba(0, 0, 0, 0.3);
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.32) inset, 0 8px 12px rgba(0, 0, 0, 0.18);
 }
 
 
@@ -1044,7 +1079,7 @@ body.light-theme #folder-browser-view .close-button:hover {
     -webkit-app-region: no-drag;
 }
 
-/* Compact color picker and number input */
+/* Compact color picker and grid count select */
 .settings-row-compact .color-picker-compact {
     width: 35px; /* Slightly smaller fixed width */
     height: 28px; /* Slightly smaller height */
@@ -1054,14 +1089,35 @@ body.light-theme #folder-browser-view .close-button:hover {
     /* 防止颜色选择器成为拖动区域 */
     -webkit-app-region: no-drag;
 }
-.settings-row-compact .number-input-compact {
-    width: 60px; /* Fixed width for number input */
-    padding: 5px 6px; /* Smaller padding */
-    font-size: 0.85em;
-    text-align: center;
-    flex-shrink: 0; /* Prevent shrinking */
-    /* 防止输入框成为拖动区域 */
+.settings-row-compact .select-input-compact {
+    width: 78px;
+    min-width: 78px;
+    height: 36px;
+    padding: 0 28px 0 12px;
+    font-size: 0.95em;
+    color: var(--text-color);
+    background-color: var(--input-bg);
+    border: 1px solid var(--input-border);
+    border-radius: 12px;
+    flex-shrink: 0;
+    box-shadow: none;
+    appearance: none;
+    -webkit-appearance: none;
+    background-image:
+        linear-gradient(45deg, transparent 50%, var(--info-text-color) 50%),
+        linear-gradient(135deg, var(--info-text-color) 50%, transparent 50%);
+    background-position:
+        calc(100% - 16px) 15px,
+        calc(100% - 10px) 15px;
+    background-size: 6px 6px, 6px 6px;
+    background-repeat: no-repeat;
+    /* 防止选择框成为拖动区域 */
     -webkit-app-region: no-drag;
+}
+.settings-row-compact .select-input-compact:focus {
+    outline: none;
+    border-color: var(--button-primary-start);
+    background-color: var(--button-toggle-hover-bg);
 }
 
 

@@ -1,15 +1,17 @@
 {
   "name": "cosmos",
-  "version": "1.4.2",
-  "description": "A time-limited sketch tool built with Electron with advanced features",
-  "main": "main.js",
+  "version": "2.0.0",
+  "description": "A time-limited sketch tool rebuilt with Tauri and Rust",
+  "type": "module",
   "scripts": {
-    "start": "electron .",
-    "pack": "electron-builder --dir",
-    "dist": "electron-builder --mac"
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "tauri": "tauri"
   },
   "keywords": [
-    "Electron",
+    "Tauri",
+    "Rust",
     "sketch",
     "tool",
     "macOS",
@@ -19,20 +21,10 @@
   "author": "Cosmos",
   "license": "MIT",
   "dependencies": {
-    "electron-store": "^8.2.0"
+    "@tauri-apps/api": "^2.8.0"
   },
   "devDependencies": {
-    "electron": "^29.0.0",
-    "electron-builder": "^24.9.1"
-  },
-  "build": {
-    "appId": "com.yourcompany.sketchtoolapp",
-    "mac": {
-      "icon": "build/icons/my-app-icon.icns",
-      "category": "public.app-category.graphics-design"
-    },
-    "directories": {
-      "output": "dist"
-    }
+    "@tauri-apps/cli": "^2.8.0",
+    "vite": "^7.1.0"
   }
 }

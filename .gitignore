@@ -5,14 +5,11 @@ yarn-debug.log*
 .pnp/
 .pnp.js
 
-# Electron specific
+# Build outputs
 dist/
 release/
-*.asar
+src-tauri/target/
 *.code-workspace
 
 # macOS
 .DS_Store
-
-# Electron Store (your app's settings)
-*.json # Be careful with this if you have other JSON files, but it will exclude electron-store's data.

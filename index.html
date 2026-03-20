@@ -6,11 +6,11 @@
     <title>限时速写工具</title>
     <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body data-tauri-drag-region>
     <!-- New: Dedicated layer for dynamic preview backgrounds -->
-    <div id="dynamic-background-layer"></div>
+    <div id="dynamic-background-layer" data-tauri-drag-region></div>
 
-    <div id="app-container">
+    <div id="app-container" data-tauri-drag-region>
         <!-- 控制菜单 -->
         <div id="controls-menu" class="glassmorphism">
             <h1>限时速写工具</h1>
@@ -75,7 +75,7 @@
         </div>
 
         <!-- 图片显示区域 -->
-        <div id="image-display-area" class="hidden">
+        <div id="image-display-area" class="hidden" data-tauri-drag-region>
             <img id="current-image" src="" alt="当前速写图片">
             <canvas id="grid-canvas"></canvas>
             <div id="countdown"></div>
@@ -245,10 +245,20 @@
             <!-- Row 3: 网格设置 -->
             <div class="settings-row-compact">
                 <label>网格:</label>
-                <span class="sub-label">颜色:</span>
-                <input type="color" id="gridColorPicker" value="#FFFFFF" class="color-picker-compact">
-                <span class="sub-label">大小 (px):</span>
-                <input type="number" id="gridSizeInput" value="50" min="10" max="200" step="10" class="number-input-compact">
+                <div class="control-group">
+                    <span class="sub-label">颜色:</span>
+                    <input type="color" id="gridColorPicker" value="#FFFFFF" class="color-picker-compact">
+                </div>
+                <div class="control-group">
+                    <span class="sub-label">数量:</span>
+                    <select id="gridSizeInput" class="select-input-compact">
+                        <option value="2">2</option>
+                        <option value="4">4</option>
+                        <option value="8" selected>8</option>
+                        <option value="16">16</option>
+                        <option value="32">32</option>
+                    </select>
+                </div>
                 <button id="resetGridSettingsButton" class="primary compact-btn">重置</button> <!-- Combined reset for grid -->
             </div>
 
@@ -268,7 +278,6 @@
                     <label><input type="radio" name="countdownVisibility" value="show" checked> 显示</label>
                     <label><input type="radio" name="countdownVisibility" value="hide"> 隐藏</label>
                 </div>
-                <button id="openSketchLogButton" class="primary compact-btn">打开速写日志</button>
             </div>
         </div>
     </div>
@@ -276,6 +285,6 @@
     <!-- 隐藏的 Canvas，用于计算平均颜色 -->
     <canvas id="hidden-image-canvas" style="display: none;"></canvas>
 
-    <script src="app.js"></script>
+    <script type="module" src="/src/main.js"></script>
 </body>
 </html>
