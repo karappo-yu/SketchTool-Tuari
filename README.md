@@ -1,5 +1,7 @@
 # SketchTool-Tuari
 
+[English](./README_EN.md)
+
 一个用于速写训练的桌面工具，当前版本基于 Tauri + Rust 重构，保留了原项目的核心使用方式，并针对 macOS 的窗口交互、图片轮播、平均色背景、网格和图片库体验做了适配。
 
 ## 截图
