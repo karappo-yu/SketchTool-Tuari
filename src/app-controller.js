@@ -44,6 +44,7 @@ export class AppController {
       naturalHeight: 0,
       color: "rgb(0,0,0)",
     };
+    this.platform = "";
 
     this.state = {
       imageFiles: [],
@@ -84,6 +85,7 @@ export class AppController {
   }
 
   async init() {
+    this.platform = await desktop.getPlatform();
     this.bindEvents();
     await this.loadSettings();
     await this.bootstrapInitialView();
@@ -646,6 +648,9 @@ export class AppController {
     elements.folderBrowserView.classList.add("hidden");
     elements.imageDisplayArea.classList.add("hidden");
     elements.topRightMenuButtons.classList.remove("hidden");
+    if (this.platform === "windows") {
+      desktop.setDecorations(true);
+    }
 
     let targetFolder = this.state.mainMenuSelectedFolderPath;
     if (folderPathToSetAsSelected) {
@@ -1051,6 +1056,9 @@ export class AppController {
     this.updatePreviewBackground();
     this.updatePreviewBackgroundGrayscaleEffect();
     this.setTrafficLightVisibility(false);
+    if (this.platform === "windows") {
+      desktop.setDecorations(false);
+    }
     this.advanceImage(true).catch((error) => {
       console.error("Failed to start sketch session playback:", error);
     });

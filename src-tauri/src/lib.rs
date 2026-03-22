@@ -419,6 +419,19 @@ fn set_always_on_top(always_on_top: bool, window: tauri::WebviewWindow) -> Alway
     }
 }
 
+#[tauri::command]
+fn set_decorations(decorations: bool, window: tauri::WebviewWindow) -> CommandResponse {
+    match window.set_decorations(decorations) {
+        Ok(_) => ok(),
+        Err(error) => fail(error.to_string()),
+    }
+}
+
+#[tauri::command]
+fn get_platform() -> String {
+    std::env::consts::OS.to_string()
+}
+
 #[cfg(target_os = "macos")]
 fn set_macos_traffic_lights(window: &tauri::WebviewWindow, visible: bool) -> Result<(), String> {
     let ns_window = window.ns_window().map_err(|error| error.to_string())?;
@@ -586,7 +599,9 @@ pub fn run() {
             clear_image_marks_for_path,
             set_always_on_top,
             set_traffic_light_visibility,
-            open_external_link
+            open_external_link,
+            set_decorations,
+            get_platform
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

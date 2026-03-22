@@ -66,6 +66,14 @@ export const desktop = {
     return command("set_traffic_light_visibility", { visible });
   },
 
+  async setDecorations(decorations) {
+    return command("set_decorations", { decorations });
+  },
+
+  async getPlatform() {
+    return command("get_platform");
+  },
+
   async openExternalLink(url) {
     return command("open_external_link", { url });
   },
