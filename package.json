@@ -1,0 +1,30 @@
+{
+  "name": "cosmos",
+  "version": "2.0.0",
+  "description": "A time-limited sketch tool rebuilt with Tauri and Rust",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "tauri": "tauri"
+  },
+  "keywords": [
+    "Tauri",
+    "Rust",
+    "sketch",
+    "tool",
+    "macOS",
+    "background",
+    "navigation"
+  ],
+  "author": "Cosmos",
+  "license": "MIT",
+  "dependencies": {
+    "@tauri-apps/api": "^2.8.0"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.8.0",
+    "vite": "^7.1.0"
+  }
+}

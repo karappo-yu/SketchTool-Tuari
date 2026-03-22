@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title data-i18n="appTitle">限时速写工具</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body data-tauri-drag-region>
+    <!-- New: Dedicated layer for dynamic preview backgrounds -->
+    <div id="dynamic-background-layer" data-tauri-drag-region></div>
+
+    <div id="app-container" data-tauri-drag-region>
+        <!-- 控制菜单 -->
+        <div id="controls-menu" class="glassmorphism">
+            <h1 data-i18n="appTitle">限时速写工具</h1>
+            <!-- 整合后的文件夹选择和路径显示区域 -->
+            <div class="input-group">
+                <label data-i18n="sketchFolder">速写文件夹:</label>
+                <div id="sketchFolderInputDisplay" class="custom-input-like-button" data-i18n-placeholder="selectSketchFolder">
+                    点击选择速写文件夹...
+                </div>
+            </div>
+
+            <div class="input-group">
+                <label for="displayTime" data-i18n="displayTimeLabel">每张图片显示时间 (秒):</label>
+                <input type="number" id="displayTime" value="60" min="1">
+            </div>
+            <!-- 常用时间选项 - 放在同一行 -->
+            <div class="buttons-group" id="preset-time-buttons" style="flex-wrap: nowrap; overflow-x: auto;">
+                <button id="preset30s" class="toggle" data-i18n="preset30s">30秒</button>
+                <button id="preset60s" class="toggle active" data-i18n="preset60s">60秒</button> <!-- 默认激活 -->
+                <button id="preset120s" class="toggle" data-i18n="preset120s">120秒</button>
+                <button id="preset300s" class="toggle" data-i18n="preset300s">300秒</button>
+                <button id="preset600s" class="toggle" data-i18n="preset600s">600秒</button>
+                <button id="presetInfiniteTime" class="toggle" data-i18n="infiniteTime">♾️</button> <!-- NEW: Infinite time option -->
+            </div>
+            <div class="buttons-group">
+                <button id="startButton" class="primary" data-i18n-title="startSketch" data-tooltip="开始速写" data-i18n="startSketch">开始速写</button>
+            </div>
+            <div class="buttons-group">
+                <button id="mirrorToggle" class="toggle">镜像</button>
+                <button id="grayscaleToggle" class="toggle">灰度</button>
+                <button id="gridToggle" class="toggle">网格</button>
+                <!-- Existing Always On Top button for main menu, re-ordered and styled -->
+                <button id="mainMenuAlwaysOnTopToggle" class="toggle">置顶</button>
+            </div>
+            <!-- Modified hint text element -->
+            <p id="mainMenuHintText" style="font-size: 0.8em; text-align: center; color: var(--info-text-color); margin-top: 15px;" data-i18n="selectFolderToStart">
+                选择文件夹以开始速写。
+            </p>
+
+            <!-- 设置按钮和随机/顺序播放按钮 - 右上角图标 -->
+            <div id="top-right-menu-buttons">
+                <button id="filter-marked-toggle" class="toggle active" data-i18n-title="filterMarked" data-tooltip="过滤已标记">
+                    <!-- Icon for filtering marked images (e.g., a filter or tag icon) -->
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M10 18h4v-2h-4v2zM3 6v2h18V6H3zm3 7h12v-2H6v2z"/>
+                    </svg>
+                </button>
+                <button id="random-playback-toggle" class="toggle" data-i18n-title="random" data-tooltip="随机">
+                    <!-- Icon for random playback (shuffle) -->
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M10.59 9.17L5.41 4H21V2H3v10.59l5.59-5.59 2.59 2.58zM14.59 14.83L19.59 19H3v2h18v-9.59L14.59 14.83z"/>
+                    </svg>
+                </button>
+                <button id="settings-button" class="toggle" data-i18n-title="settings" data-tooltip="设置">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm0 2a8 8 0 100 16 8 8 0 000-16zM12 6a6 6 0 110 12 6 6 0 010-12z"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <!-- 图片显示区域 -->
+        <div id="image-display-area" class="hidden" data-tauri-drag-region>
+            <img id="current-image" crossorigin="anonymous" src="" alt="当前速写图片">
+            <canvas id="grid-canvas"></canvas>
+            <div id="countdown"></div>
+
+
+            <!-- 鼠标悬停区域 - 右侧 -->
+            <div id="right-controls-hover-zone">
+                <!-- 浮动控制菜单 (播放时鼠标悬停显示) -->
+                <div id="overlay-controls" class="glassmorphism">
+                    <button id="openInFinderButton" class="toggle" data-i18n-title="openInFolder" data-tooltip="在文件夹中打开">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/>
+                        </svg>
+                    </button>
+                    <!-- New: Mark Button - moved here -->
+                    <button id="markStarButton" class="toggle" data-i18n-title="unmarked" data-tooltip="未标记">
+                        <span class="mark-icon">&#x2022;</span> <!-- Simple Dot -->
+                    </button>
+                    <button id="overlayMirrorToggle" class="toggle" data-i18n-title="mirror" data-tooltip="镜像">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M11 5H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h5v2h2V3h-2v2zm7 0h-5v2h5c1.1 0 2 .9 2 2v6c0 1.1-.9 2-2 2h-5v2h5c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2z"/>
+                        </svg>
+                    </button>
+                    <button id="overlayGrayscaleToggle" class="toggle" data-i18n-title="grayscale" data-tooltip="灰度">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M20 4h-4L12 12 8 4H4v16h4v-8l4 8 4-8v8h4V4zm-8 4l-4 8H8l4-8 4 8h-4V4z"/>
+                        </svg>
+                    </button>
+                    <button id="overlayGridToggle" class="toggle" data-i18n-title="grid" data-tooltip="网格">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M20 2H4c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM8 20H4v-4h4v4zm0-6H4v-4h4v4zm0-6H4V4h4v4zm6 12h-4v-4h4v4zm0-6h-4v-4h4v4zm0-6h-4V4h4v4zm6 12h-4v-4h4v4zm0-6h-4v-4h4v4zm0-6h-4V4h4v4z"/>
+                        </svg>
+                    </button>
+                    <button id="toggleAlwaysOnTopButton" class="toggle" data-i18n-title="alwaysOnTop" data-tooltip="置顶">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M7 17h10V7H7v10zm2-8h6v6H9V9zm-5 4V9c0-1.1.9-2 2-2h4V5H6c-1.1 0-2 .9-2 2v6c0 1.1.9 2 2 2h4v-2H6v2c-1.1 0-2-.9-2-2zm14 0c0 1.1-.9 2-2 2h-4v2h4c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2h-4v2h4v2c1.1 0 2 .9 2 2v4z"/>
+                        </svg>
+                    </button>
+                    <button id="backToMenuButton" class="primary" data-i18n-title="backToMenu" data-tooltip="返回菜单">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- 鼠标悬停区域 - 底部 -->
+            <div id="bottom-controls-hover-zone">
+                <!-- 图片底部导航按钮 -->
+                <div id="image-navigation-controls">
+                    <button id="prevImageButton" class="toggle">
+                        ‹
+                    </button>
+                    <button id="pausePlayButton" class="toggle">
+                        <!-- 初始为暂停图标 -->
+                        ⏸
+                    </button>
+                    <button id="nextImageButton" class="toggle">
+                        ›
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 文件夹浏览器视图 -->
+        <div id="folder-browser-view" class="glassmorphism">
+            <!-- New: Close button for folder browser -->
+            <button class="close-button" id="closeFolderBrowserButton">&times;</button>
+            <!-- New: Folder browser header -->
+            <div class="folder-browser-header">
+                <h1 data-i18n="imageLibrary">图片库</h1>
+                <div id="current-library-path"></div>
+                <div class="folder-browser-header-buttons">
+                    <button id="libraryFilterMarkedToggle" class="toggle" data-i18n-title="filterMarked" data-tooltip="过滤已标记">
+                        <span class="mark-icon">&#x2022;</span> <!-- Solid circle icon for consistency -->
+                    </button>
+                    <button id="goUpFolderButton" class="toggle" data-i18n="goBack">
+                        <span style="font-size: 1.2em; margin-right: 5px;">⬆</span>返回上级
+                    </button>
+                </div>
+            </div>
+
+            <div id="thumbnails-grid-container">
+                <!-- 图片缩略图将在此处动态加载 -->
+                <p class="info-message" id="folderBrowserInfoMessage" data-i18n="loading">加载中...</p>
+            </div>
+            <!-- 分页控件 -->
+            <div class="buttons-group" style="width: 100%; justify-content: space-between; margin-top: 10px;">
+                <button id="prevPageButton" class="toggle" data-i18n="previousPage">上一页</button>
+                <span id="pageInfoDisplay" style="color: var(--info-text-color); font-size: 0.9em;"></span>
+                <button id="nextPageButton" class="toggle" data-i18n="nextPage">下一页</button>
+            </div>
+            <div class="buttons-group">
+                <button id="selectFolderForSketchAndReturnToMenuButton" class="primary" data-i18n="selectThisFolder">选择此文件夹</button>
+                <button id="selectNewFolderFromBrowserButton" class="primary" data-i18n="selectOtherFolder">选择其他文件夹</button>
+                <!-- Removed: backFromBrowserToMenuButton -->
+            </div>
+        </div>
+    </div>
+
+    <!-- 设置模态框 -->
+    <div id="settings-modal-overlay">
+        <div id="settings-modal-content" class="glassmorphism">
+            <button class="close-button" id="closeSettingsModal">&times;</button>
+            <!-- New: Theme toggle button inside settings modal -->
+            <button id="settings-modal-theme-toggle" class="toggle" data-i18n-title="switchTheme" data-tooltip="切换主题">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                    <!-- Standard Sun icon path (corrected) -->
+                    <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm0 2a8 8 0 100 16 8 8 0 000-16zM12 6a6 6 0 110 12 6 6 0 010-12z"/>
+                </svg>
+            </button>
+
+            <h2 data-i18n="settings">设置</h2>
+
+            <!-- Row 1: 菜单背景设置 -->
+            <div class="settings-row-compact">
+                <label data-i18n="menuBackground">菜单背景:</label>
+                <div class="radio-group-inline" id="mainMenuBackgroundChoiceRadiosGroup">
+                    <label data-i18n="solidColor"><input type="radio" name="mainMenuBackgroundChoice" value="solidColor" checked> 纯色</label>
+                    <label data-i18n="backgroundImage"><input type="radio" name="mainMenuBackgroundChoice" value="staticImage"> 图片</label>
+                </div>
+            </div>
+
+            <!-- Conditionally visible row for Main Menu Static Image Path Selection -->
+            <div class="settings-row-compact" id="mainMenuStaticImagePathRow" style="display: none;">
+                <label></label> <!-- Empty label to maintain alignment -->
+                <input type="text" id="mainMenuBackgroundPathDisplay" readonly data-i18n-placeholder="notSelectedStaticImage" placeholder="未选择静态图片" class="flex-grow-input-display">
+                <button id="selectMainMenuImageButton" class="primary compact-btn" data-i18n="select">选择</button>
+                <button id="clearMainMenuImageButton" class="primary compact-btn" data-i18n="clear">清除</button>
+            </div>
+
+            <!-- Row (Modified): 预览背景模式 -->
+            <div class="settings-row-compact">
+                <label data-i18n="previewBackground">预览背景:</label>
+                <div class="radio-group-inline" id="previewBackgroundChoiceRadiosGroup">
+                    <label data-i18n="solidColor"><input type="radio" name="previewBackgroundChoice" value="solidColor"> 纯色</label>
+                    <label data-i18n="averageColor"><input type="radio" name="previewBackgroundChoice" value="averageColor"> 平均色</label>
+                    <label data-i18n="staticImage"><input type="radio" name="previewBackgroundChoice" value="staticImage"> 静态图片</label>
+                </div>
+            </div>
+
+            <!-- Conditionally visible row for Preview Static Image Path Selection -->
+            <div class="settings-row-compact" id="staticImagePathRow" style="display: none;">
+                <label></label> <!-- Empty label to maintain alignment -->
+                <input type="text" id="previewBackgroundPathDisplay" readonly data-i18n-placeholder="notSelectedStaticImage" placeholder="未选择静态图片" class="flex-grow-input-display">
+                <button id="selectStaticImageButton" class="primary compact-btn" data-i18n="select">选择</button>
+                <button id="clearStaticImageButton" class="primary compact-btn" data-i18n="clear">清除</button>
+            </div>
+
+            <!-- NEW: Row for Startup Path Setting -->
+            <div class="settings-row-compact">
+                <label data-i18n="startupAction">启动时打开:</label>
+                <div class="radio-group-inline" id="startupModeChoiceRadiosGroup">
+                    <label data-i18n="lastUsedPath"><input type="radio" name="startupMode" value="lastUsedPath" checked> 上次路径</label>
+                    <label data-i18n="defaultPath"><input type="radio" name="startupMode" value="defaultPath"> 默认路径</label>
+                </div>
+            </div>
+
+            <!-- Row 2: 默认路径 (now visually grouped with startup setting) -->
+            <div class="settings-row-compact">
+                <label data-i18n="defaultFolderPath">默认路径:</label>
+                <input type="text" id="defaultImageFolderPathDisplay" readonly data-i18n-placeholder="notSetDefaultPath" placeholder="未设置默认路径" class="flex-grow-input-display">
+                <button id="setDefaultImageFolderButton" class="primary compact-btn" data-i18n="set">设置</button>
+                <button id="clearDefaultImageFolderButton" class="primary compact-btn" data-i18n="clear">清除</button>
+            </div>
+
+            <!-- Row 3: 网格设置 -->
+            <div class="settings-row-compact">
+                <label data-i18n="gridSettings">网格:</label>
+                <div class="control-group">
+                    <span class="sub-label" data-i18n="color">颜色:</span>
+                    <input type="color" id="gridColorPicker" value="#FFFFFF" class="color-picker-compact">
+                </div>
+                <div class="control-group">
+                    <span class="sub-label" data-i18n="count">数量:</span>
+                    <select id="gridSizeInput" class="select-input-compact">
+                        <option value="2">2</option>
+                        <option value="4">4</option>
+                        <option value="8" selected>8</option>
+                        <option value="16">16</option>
+                        <option value="32">32</option>
+                    </select>
+                </div>
+                <button id="resetGridSettingsButton" class="primary compact-btn" data-i18n="reset">重置</button> <!-- Combined reset for grid -->
+            </div>
+
+            <!-- Row 4: 时间格式 -->
+            <div class="settings-row-compact">
+                <label data-i18n="timeFormat">时间格式:</label>
+                <div class="radio-group-inline">
+                    <label data-i18n="hoursMinutesSeconds"><input type="radio" name="timeFormat" value="hours:minutes:seconds" checked> 时:分:秒</label>
+                    <label data-i18n="secondsOnly"><input type="radio" name="timeFormat" value="seconds"> 只秒</label>
+                </div>
+            </div>
+
+            <!-- Row 5: 工具和新的倒计时显示开关 -->
+            <div class="settings-row-compact">
+                <label data-i18n="countdown">倒计时:</label>
+                <div class="radio-group-inline">
+                    <label data-i18n="show"><input type="radio" name="countdownVisibility" value="show" checked> 显示</label>
+                    <label data-i18n="hide"><input type="radio" name="countdownVisibility" value="hide"> 隐藏</label>
+                </div>
+            </div>
+
+            <!-- Row 6: 语言设置 -->
+            <div class="settings-row-compact">
+                <label data-i18n="language">语言:</label>
+                <select id="languageSelector" class="language-selector">
+                    <option value="zh-CN">简体中文</option>
+                    <option value="en">English</option>
+                    <option value="ja">日本語</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <!-- 隐藏的 Canvas，用于计算平均颜色 -->
+    <canvas id="hidden-image-canvas" style="display: none;"></canvas>
+
+    <script type="module" src="/src/main.js"></script>
+</body>
+</html>

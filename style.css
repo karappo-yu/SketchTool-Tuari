@@ -1,0 +1,1444 @@
+/* CSS Variables for theming */
+:root {
+    /* Dark Theme Defaults */
+    --bg-gradient-start: #1a1a2e;
+    --bg-gradient-mid: #16213e;
+    --bg-gradient-end: #0f3460;
+    --text-color: #e0e0e0;
+    --glass-bg-color: rgba(40, 44, 52, 0.6);
+    --glass-border-color: rgba(255, 255, 255, 0.18);
+    --button-primary-start: #0f3460;
+    --button-primary-end: #16213e;
+    --button-toggle-bg: rgba(255, 255, 255, 0.08);
+    --button-toggle-hover-bg: rgba(255, 255, 255, 0.15);
+    --button-toggle-active-start: #28a745;
+    --button-toggle-active-end: #218838;
+    --button-nav-bg: rgba(255, 255, 255, 0.35);
+    --button-nav-color: rgba(255, 255, 255, 0.95);
+    --button-nav-hover-bg: rgba(255, 255, 255, 0.5);
+    --input-bg: rgba(255, 255, 255, 0.05);
+    --input-border: rgba(255, 255, 255, 0.2);
+    --info-text-color: #a0a0a0;
+    --default-preview-bg: #1a1a2e;
+    --alert-bg: rgba(40, 44, 52, 0.9);
+    --alert-border: 1px solid rgba(255, 255, 255, 0.18);
+    --alert-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+    --mark-info-bg: rgba(0, 0, 0, 0.7);
+    --mark-info-text-color: #ffffff; /* Explicitly white for dark theme */
+    --delete-mark-color: #dc3545;
+    --folder-completed-bg: #28a745; /* Green for completed folders */
+}
+
+body.light-theme {
+    /* Light Theme Overrides */
+    --bg-gradient-start: #f0f2f5;
+    --bg-gradient-mid: #e9ecef;
+    --bg-gradient-end: #dee2e6;
+    --text-color: #333333;
+    --glass-bg-color: rgba(255, 255, 255, 0.8);
+    --glass-border-color: rgba(0, 0, 0, 0.1);
+    --button-primary-start: #4a90e2; /* Sky blue */
+    --button-primary-end: #61a9f5;
+    --button-toggle-bg: rgba(0, 0, 0, 0.05);
+    --button-toggle-hover-bg: rgba(0, 0, 0, 0.1);
+    --button-toggle-active-start: #28a745;
+    --button-toggle-active-end: #218838;
+    --button-nav-bg: rgba(0, 0, 0, 0.2);
+    --button-nav-color: rgba(0, 0, 0, 0.85);
+    --button-nav-hover-bg: rgba(0, 0, 0, 0.35);
+    --input-bg: rgba(0, 0, 0, 0.03);
+    --input-border: rgba(0, 0, 0, 0.15);
+    --info-text-color: #666666;
+    --default-preview-bg: #f8f9fa; /* Lighter preview background */
+    --alert-bg: rgba(255, 255, 255, 0.95);
+    --alert-border: 1px solid rgba(0, 0, 0, 0.1);
+    --alert-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.1);
+    --mark-info-bg: rgba(0, 0, 0, 0.7); /* Darker background for contrast in light theme */
+    --mark-info-text-color: #ffffff; /* Explicitly white for light theme */
+    --delete-mark-color: #dc3545;
+    --folder-completed-bg: #28a745; /* Green for completed folders */
+}
+
+/* CSS Reset 和全局样式 */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    /* REMOVE background properties from body here, they are moved to #dynamic-background-layer */
+    background: none; 
+    color: var(--text-color);
+    overflow: hidden;
+    /* transition moved to #dynamic-background-layer */
+
+    /* Follow the original Electron window behavior: the full background is draggable. */
+    -webkit-app-region: drag;
+}
+
+/* New: Dedicated layer for dynamic preview backgrounds */
+#dynamic-background-layer {
+    position: fixed; /* Fixed to viewport */
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 0; /* Behind everything else */
+    /* Apply background transitions here */
+    transition: background-color 0.8s ease, background-image 0.8s ease, filter 0.5s ease;
+    /* Ensure it's not draggable by default */
+    -webkit-app-region: no-drag;
+}
+
+/* New: Grayscale effect applied ONLY to the background layer */
+#dynamic-background-layer.grayscale-active-bg {
+    filter: grayscale(100%);
+}
+
+
+/* 玻璃拟态效果基础样式 */
+.glassmorphism {
+    background: var(--glass-bg-color);
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--glass-border-color);
+    border-radius: 16px;
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37); /* Shadow is intentionally not themed directly by variable for consistency */
+    padding: 20px;
+    margin: 0;
+    
+    /* 玻璃拟态元素本身不能拖动，确保内部可拖动区域正常工作 */
+    -webkit-app-region: no-drag;
+}
+
+/* The rest of the CSS using variables */
+#app-container {
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    position: relative;
+    z-index: 1; /* CRITICAL: Must be higher than #dynamic-background-layer */
+    background-color: transparent; /* Ensure app-container itself is transparent to show background layer */
+
+    /* Preserve the original drag behavior across the full background canvas. */
+    -webkit-app-region: drag;
+}
+
+#controls-menu {
+    position: absolute;
+    top: 55%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    max-width: 90%;
+    width: 400px;
+}
+
+#controls-menu.hidden {
+    display: none;
+}
+
+#folder-browser-view {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    max-width: 90%;
+    width: 800px;
+    height: 80vh;
+    align-items: center;
+    justify-content: flex-start;
+    overflow-y: hidden;
+}
+#folder-browser-view.hidden {
+    display: none;
+}
+
+/* New: Folder browser header container */
+.folder-browser-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: 0 10px 0 40px; /* Modified: Increased left padding for close button clearance */
+    margin-bottom: 10px; /* Space from content below */
+    flex-wrap: wrap; /* Allow wrapping by default now */
+    gap: 10px; /* Consistent gap between items */
+}
+
+.folder-browser-header h1 {
+    margin: 0; /* Remove default margins */
+    font-size: 1.8em;
+    color: var(--text-color);
+    flex-shrink: 0; /* Prevent shrinking */
+    white-space: nowrap; /* Prevent text wrapping within h1 */
+}
+
+.folder-browser-header #current-library-path {
+    margin: 0; /* Adjusted: No fixed margin-left/right, use gap instead */
+    font-size: 0.9em;
+    color: var(--info-text-color);
+    text-align: left; /* Align text left */
+    flex-grow: 1; /* Allow path to take available space */
+    white-space: nowrap; /* Prevent wrapping of path text */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0; /* Allow text to shrink if necessary */
+}
+.folder-browser-header-buttons {
+    display: flex;
+    gap: 8px; /* Gap between buttons */
+}
+
+.folder-browser-header #goUpFolderButton,
+.folder-browser-header #libraryFilterMarkedToggle {
+    margin: 0; /* Remove default margins */
+    padding: 8px 15px; /* Adjust button padding */
+    font-size: 0.9em;
+    flex-shrink: 0; /* Prevent shrinking */
+    border-radius: 8px; /* Ensure consistent border-radius for buttons */
+}
+/* New: Styles for library filter button icon */
+.folder-browser-header #libraryFilterMarkedToggle .mark-icon {
+    font-size: 1.8em; /* Match markStarButton size */
+    line-height: 1;
+    display: block;
+    /* Color and background are handled by .toggle and .active classes */
+}
+
+
+.info-message {
+    font-size: 1.1em;
+    color: var(--info-text-color);
+    text-align: center;
+    margin-top: 50px;
+    width: 100%;
+}
+
+#thumbnails-grid-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 15px;
+    padding: 10px;
+    width: 100%;
+    flex-grow: 1;
+    overflow-y: auto;
+    justify-content: center;
+    align-content: flex-start;
+}
+
+.thumbnail-item {
+    background: rgba(255, 255, 255, 0.05); /* This can stay fixed for contrast or be themed */
+    border-radius: 8px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 8px;
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    height: 160px;
+    text-decoration: none;
+    color: inherit;
+    position: relative; /* For positioning mark info */
+}
+
+.thumbnail-item:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+    background: rgba(255, 255, 255, 0.1); /* This can stay fixed or be themed */
+}
+
+.thumbnail-item img {
+    max-width: 100%;
+    max-height: 100px;
+    width: auto;
+    height: auto;
+    object-fit: contain;
+    border-radius: 4px;
+    flex-shrink: 0;
+}
+
+.thumbnail-item .folder-icon {
+    font-size: 60px;
+    margin-bottom: 10px;
+}
+
+.thumbnail-label {
+    font-size: 0.8em;
+    color: var(--info-text-color);
+    margin-top: 8px;
+    text-align: center;
+    word-break: break-all;
+    white-space: normal;
+    max-height: 2.4em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.2;
+}
+
+/* New: Styles for mark information on thumbnail */
+.thumbnail-mark-info {
+    position: absolute;
+    top: 5px;
+    left: 5px;
+    background: var(--mark-info-bg);
+    color: var(--mark-info-text-color); /* Use the new variable for consistent white text */
+    font-size: 0.75em;
+    padding: 3px 6px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    user-select: none;
+    pointer-events: auto; /* Allow interaction */
+    z-index: 1;
+}
+
+.delete-mark-button {
+    background: none;
+    border: none;
+    color: var(--delete-mark-color);
+    font-size: 1.2em;
+    cursor: pointer;
+    padding: 0 2px;
+    line-height: 1;
+    font-weight: bold;
+    transition: color 0.2s ease, transform 0.2s ease;
+}
+.delete-mark-button:hover {
+    color: #ff6b6b; /* Lighter red on hover */
+    transform: scale(1.2);
+}
+body.light-theme .delete-mark-button {
+    color: #dc3545; /* Darker red for light theme */
+}
+body.light-theme .delete-mark-button:hover {
+    color: #ff6b6b;
+}
+
+/* New: Folder completed mark style */
+.thumbnail-folder-completed-info {
+    position: absolute;
+    top: 5px;
+    right: 5px; /* Position on the right for folders */
+    background: var(--folder-completed-bg); /* Use green color */
+    color: #ffffff; /* White text for contrast */
+    font-size: 0.75em;
+    padding: 3px 6px;
+    border-radius: 4px;
+    user-select: none;
+    pointer-events: none; /* Make it non-interactive */
+    z-index: 1;
+    font-weight: bold;
+}
+
+
+.input-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.input-group label {
+    font-size: 0.9em;
+    color: var(--info-text-color);
+}
+
+.custom-input-like-button {
+    width: 100%;
+    padding: 10px 15px;
+    border: 1px solid var(--input-border);
+    border-radius: 8px;
+    background: var(--input-bg);
+    color: var(--text-color);
+    font-size: 1em;
+    cursor: pointer;
+    text-align: center; 
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transition: border-color 0.3s, background-color 0.3s, color 0.3s;
+    /* 防止按钮成为拖动区域 */
+    -webkit-app-region: no-drag;
+}
+.custom-input-like-button:hover {
+    border-color: var(--button-primary-start); /* Using primary button start color for hover border */
+    background-color: var(--button-toggle-hover-bg); /* Using toggle hover bg for consistency */
+}
+
+input[type="number"],
+input[type="text"] {
+    width: 100%;
+    padding: 10px 15px;
+    border: 1px solid var(--input-border);
+    border-radius: 8px;
+    background: var(--input-bg);
+    color: var(--text-color);
+    font-size: 1em;
+    outline: none;
+    transition: border-color 0.3s, background-color 0.3s, color 0.3s;
+    /* 防止输入框成为拖动区域 */
+    -webkit-app-region: no-drag;
+}
+
+input[type="number"]:focus,
+input[type="text"]:focus {
+    border-color: var(--button-primary-start);
+    background-color: var(--button-toggle-hover-bg);
+}
+input[type="number"]:disabled {
+    background-color: var(--button-toggle-bg); /* Slightly different background for disabled */
+    color: var(--info-text-color); /* Lighter text for disabled */
+    cursor: not-allowed;
+}
+
+
+.buttons-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    justify-content: center;
+}
+
+button {
+    padding: 12px 25px;
+    border: none;
+    border-radius: 8px;
+    font-size: 1em;
+    cursor: pointer;
+    outline: none;
+    transition: background 0.3s ease, transform 0.2s ease, box-shadow 0.3s ease, color 0.3s ease;
+    color: var(--text-color);
+    font-weight: bold;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+    position: relative; /* Needed for tooltips */
+    /* 防止按钮成为拖动区域 */
+    -webkit-app-region: no-drag;
+}
+
+button.primary {
+    background: linear-gradient(135deg, var(--button-primary-start), var(--button-primary-end));
+}
+
+button.primary:hover {
+    background: linear-gradient(135deg, var(--button-primary-end), var(--button-primary-start)); /* Reverse gradient on hover */
+    transform: translateY(-2px);
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.3);
+}
+
+button.toggle {
+    background: var(--button-toggle-bg);
+    box-shadow: none;
+    padding: 8px 15px;
+}
+
+button.toggle.active {
+    background: linear-gradient(135deg, var(--button-toggle-active-start), var(--button-toggle-active-end));
+    box-shadow: 0 2px 8px rgba(40, 167, 69, 0.4);
+}
+
+button.toggle:not(.active):hover {
+    background: var(--button-toggle-hover-bg);
+}
+
+button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: translateY(0);
+    box-shadow: none;
+}
+
+/* Tooltip base styles for all buttons that use data-tooltip */
+button[data-tooltip]::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    background-color: rgba(0, 0, 0, 0.7);
+    color: #fff;
+    padding: 5px 8px;
+    border-radius: 5px;
+    font-size: 0.8em;
+    white-space: nowrap;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.2s ease, visibility 0.2s ease;
+    pointer-events: none;
+    z-index: 100;
+}
+button[data-tooltip]:hover::after {
+    opacity: 1;
+    visibility: visible;
+}
+button[data-tooltip]::before { /* Tooltip arrow */
+    content: '';
+    position: absolute;
+    width: 0;
+    height: 0;
+    border-left: 6px solid transparent;
+    border-right: 6px solid transparent;
+    border-bottom: 6px solid rgba(0, 0, 0, 0.7); /* Pointing up */
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.2s ease, visibility 0.2s ease;
+    pointer-events: none;
+    z-index: 100;
+}
+button[data-tooltip]:hover::before {
+    opacity: 1;
+    visibility: visible;
+}
+
+/* Positioning for main menu top-right buttons tooltips */
+#top-right-menu-buttons button[data-tooltip]::after {
+    top: 100%; /* Position below the button */
+    left: 50%;
+    transform: translateX(-50%);
+    margin-top: 10px; /* Space from the button */
+}
+#top-right-menu-buttons button[data-tooltip]::before {
+    top: 100%; /* Position below the button */
+    left: 50%;
+    transform: translateX(-50%) translateY(-8px); /* Adjust for arrow position */
+}
+/* Positioning for overlay buttons tooltips */
+#overlay-controls button[data-tooltip]::after {
+    top: 100%; /* Position below the button */
+    left: 50%;
+    transform: translateX(-50%);
+    margin-top: 10px; /* Space from the button */
+}
+#overlay-controls button[data-tooltip]::before {
+    top: 100%; /* Position below the button */
+    left: 50%;
+    transform: translateX(-50%) translateY(-8px); /* Adjust for arrow position */
+}
+
+/* Positioning for startButton tooltip */
+#startButton[data-tooltip]::after {
+    bottom: 100%; /* Position above the button */
+    left: 50%;
+    transform: translateX(-50%);
+    margin-bottom: 10px; /* Space from the button */
+}
+#startButton[data-tooltip]::before {
+    bottom: 100%; /* Position above the button */
+    left: 50%;
+    transform: translateX(-50%) translateY(8px); /* Adjust for arrow position */
+    border-top: 6px solid rgba(0, 0, 0, 0.7); /* Pointing down */
+    border-bottom: none; /* No bottom border */
+}
+
+
+#image-display-area {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+#image-display-area.hidden {
+    display: none;
+}
+
+#current-image {
+    max-width: 100%;
+    max-height: 100%;
+    width: auto; /* Allow natural width based on aspect ratio */
+    height: auto; /* Allow natural height based on aspect ratio */
+    object-fit: contain; /* This is key for fitting without cropping */
+    transition: filter 0.5s ease, transform 0.5s ease;
+    user-select: none;
+    pointer-events: none;
+}
+
+
+#countdown {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    font-size: 3em;
+    font-weight: bold;
+    color: var(--text-color); /* Themed text color */
+    text-shadow: 0 0 10px rgba(0, 0, 0, 0.8);
+    z-index: 5;
+    pointer-events: none;
+    /* FIX: Ensure no background, border, or padding that could cause a box */
+    background-color: transparent;
+    border: none;
+    padding: 0;
+}
+
+#grid-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 2;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.5s ease;
+}
+
+#grid-canvas.active {
+    opacity: 1;
+}
+
+/* Image effects */
+.mirror-effect {
+    transform: scaleX(-1);
+}
+
+.grayscale-effect {
+    filter: grayscale(100%);
+}
+
+/* Floating control menu (right side) */
+#overlay-controls {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    z-index: 15;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+#right-controls-hover-zone {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 150px;
+    height: 100%;
+    z-index: 14;
+    pointer-events: auto;
+    /* CRITICAL FIX: Ensure hover zone is not draggable itself */
+    -webkit-app-region: no-drag; 
+}
+#right-controls-hover-zone:hover #overlay-controls {
+    opacity: 1;
+    visibility: visible;
+}
+
+#overlay-controls button {
+    padding: 0; /* Changed to 0 as buttons contain icons now */
+    font-size: 1.2em; /* Base font size for icons */
+    background: var(--button-toggle-bg); /* Themed */
+    color: var(--text-color); /* Themed */
+    border: 1px solid var(--glass-border-color); /* Themed */
+    border-radius: 8px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+    width: 40px; /* Fixed width for icon buttons */
+    height: 40px; /* Fixed height for icon buttons */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    white-space: nowrap;
+    position: relative;
+    /* 防止按钮成为拖动区域 */
+    -webkit-app-region: no-drag;
+}
+
+#overlay-controls button.primary {
+    background: linear-gradient(135deg, var(--button-primary-start), var(--button-primary-end)); /* Themed */
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+}
+
+#overlay-controls button.primary:hover {
+    background: linear-gradient(135deg, var(--button-primary-end), var(--button-primary-start)); /* Themed */
+    transform: translateY(-1px);
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.4);
+}
+
+#overlay-controls button.toggle.active {
+    background: linear-gradient(135deg, var(--button-toggle-active-start), var(--button-toggle-active-end));
+    box-shadow: 0 2px 8px rgba(40, 167, 69, 0.4);
+}
+
+#overlay-controls button.toggle:not(.active):hover {
+    background: var(--button-toggle-hover-bg);
+}
+
+/* Icons inside buttons */
+#overlay-controls button svg,
+#overlay-controls button .mark-icon { /* Apply to both SVG and Unicode icons */
+    fill: currentColor;
+    width: 28px; /* Consistent size for icons */
+    height: 28px;
+    display: block; /* Ensure correct rendering for unicode chars */
+    line-height: 1; /* For vertical centering of unicode chars */
+}
+
+
+/* Image bottom navigation controls */
+#image-navigation-controls {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 15;
+    display: flex;
+    gap: 20px;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+#bottom-controls-hover-zone {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 80px; /* Increased height for easier hover activation */
+    z-index: 14;
+    pointer-events: auto;
+    /* CRITICAL FIX: Ensure hover zone is not draggable itself */
+    -webkit-app-region: no-drag;
+}
+/* When hovering over the bottom zone, show navigation controls */
+#bottom-controls-hover-zone:hover #image-navigation-controls {
+    opacity: 1;
+    visibility: visible;
+    transition-delay: 0s; /* No delay when showing */
+}
+
+#image-navigation-controls button {
+    background: var(--button-nav-bg); /* Themed */
+    border-radius: 50%;
+    width: 65px;
+    height: 65px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 3em;
+    color: var(--button-nav-color); /* Themed */
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.5);
+    transition: background 0.3s ease, transform 0.2s ease, box-shadow 0.3s ease, color 0.3s ease;
+    text-shadow: 0 0 8px rgba(0, 0, 0, 0.6);
+    font-weight: bold;
+    /* 防止按钮成为拖动区域 */
+    -webkit-app-region: no-drag;
+}
+
+#image-navigation-controls button:hover {
+    background: var(--button-nav-hover-bg); /* Themed */
+    transform: translateY(-4px) scale(1.1);
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.6);
+}
+
+#image-navigation-controls button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: translateY(0) scale(1);
+    box-shadow: none;
+}
+body.light-theme #image-navigation-controls button:disabled {
+    background: rgba(0, 0, 0, 0.1);
+    color: rgba(0, 0, 0, 0.25);
+}
+
+
+/* Top-right menu buttons */
+#top-right-menu-buttons {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    display: flex;
+    gap: 10px;
+    z-index: 10;
+}
+
+/* Styling for settings, random playback, filter marked buttons (circular icons) */
+#settings-button,
+#random-playback-toggle,
+#filter-marked-toggle {
+    background: var(--button-toggle-bg); /* Themed */
+    border-radius: 50%;
+    width: 36px; /* Optimized fixed size */
+    height: 36px; /* Optimized fixed size */
+    font-size: 1.5em; /* Base font size for icons - for any unicode fallback */
+    color: var(--text-color); /* Themed */
+    cursor: pointer;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    transition: background 0.3s ease, transform 0.2s ease, box-shadow 0.3s ease, color 0.3s ease;
+    /* Ensure centering of contents */
+    display: flex; 
+    justify-content: center; 
+    align-items: center; 
+    /* 防止按钮成为拖动区域 */
+    -webkit-app-region: no-drag;
+}
+#settings-button:hover,
+#random-playback-toggle:hover,
+#filter-marked-toggle:hover {
+    background: var(--button-toggle-hover-bg); /* Themed */
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+#settings-button:hover {
+    transform: rotate(15deg); 
+}
+
+/* NEW: Explicit active states for specific top-right circular buttons (higher specificity) */
+#random-playback-toggle.active,
+#filter-marked-toggle.active,
+#settings-button.active { 
+    background: linear-gradient(135deg, var(--button-toggle-active-start), var(--button-toggle-active-end));
+    box-shadow: 0 2px 8px rgba(40, 167, 69, 0.4);
+}
+
+
+/* Settings modal overlay */
+#settings-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(5px);
+    z-index: 20;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+
+    /* overlay 设为可拖动 */
+    -webkit-app-region: drag;
+}
+
+#settings-modal-overlay.active {
+    opacity: 1;
+    visibility: visible;
+}
+
+#settings-modal-content {
+    width: 680px; /* Further increased width to accommodate inline elements more comfortably */
+    max-width: 95%; /* Adjusted max-width for very small screens */
+    padding: 30px;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+
+    /* 模态框内容本身不可拖动，以便内部元素可拖动 */
+    -webkit-app-region: no-drag;
+}
+
+#settings-modal-content h2 {
+    text-align: center;
+    margin-bottom: 5px; /* Reduced margin */
+    color: var(--text-color); /* Themed */
+    font-size: 1.8em;
+}
+
+/* Settings modal close button position (top-left) */
+#settings-modal-content .close-button {
+    position: absolute;
+    top: 10px; /* Slightly closer to edge */
+    left: 10px; /* Slightly closer to edge */
+    background: radial-gradient(circle at 35% 35%, #ff6f7f 0%, #ff5166 30%, #ff4b5f 58%, #e13a50 100%);
+    border: none;
+    font-size: 0;
+    color: transparent;
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.2s ease, opacity 0.3s ease, filter 0.2s ease;
+    padding: 0;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    opacity: 0;
+    pointer-events: none;
+    z-index: 1;
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.28) inset, 0 6px 10px rgba(0, 0, 0, 0.18);
+    -webkit-app-region: no-drag;
+}
+#settings-modal-content .close-button::before,
+#settings-modal-content .close-button::after {
+    content: "";
+    position: absolute;
+    width: 11px;
+    height: 3.2px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.96);
+    box-shadow: 0 0.4px 0 rgba(0, 0, 0, 0.12);
+}
+#settings-modal-content .close-button::before {
+    transform: rotate(45deg);
+}
+#settings-modal-content .close-button::after {
+    transform: rotate(-45deg);
+}
+#settings-modal-content:hover .close-button {
+    opacity: 1;
+    pointer-events: auto;
+}
+#settings-modal-content .close-button:hover {
+    transform: translateY(-0.5px) scale(1.03);
+    filter: saturate(1.05) brightness(1.02);
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.3) inset, 0 8px 12px rgba(0, 0, 0, 0.22);
+}
+body.light-theme #settings-modal-content .close-button:hover {
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.32) inset, 0 8px 12px rgba(0, 0, 0, 0.18);
+}
+
+/* NEW: Close button for Folder Browser View - uses the same .close-button class */
+#folder-browser-view .close-button {
+    position: absolute;
+    top: 10px; /* Consistent with settings modal */
+    left: 10px; /* Consistent with settings modal */
+    background: radial-gradient(circle at 35% 35%, #ff6f7f 0%, #ff5166 30%, #ff4b5f 58%, #e13a50 100%);
+    border: none;
+    font-size: 0;
+    color: transparent;
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.2s ease, opacity 0.3s ease, filter 0.2s ease;
+    padding: 0;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    opacity: 0;
+    pointer-events: none;
+    z-index: 1;
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.28) inset, 0 6px 10px rgba(0, 0, 0, 0.18);
+    -webkit-app-region: no-drag;
+}
+#folder-browser-view .close-button::before,
+#folder-browser-view .close-button::after {
+    content: "";
+    position: absolute;
+    width: 11px;
+    height: 3.2px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.96);
+    box-shadow: 0 0.4px 0 rgba(0, 0, 0, 0.12);
+}
+#folder-browser-view .close-button::before {
+    transform: rotate(45deg);
+}
+#folder-browser-view .close-button::after {
+    transform: rotate(-45deg);
+}
+
+#folder-browser-view:hover .close-button {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+#folder-browser-view .close-button:hover {
+    transform: translateY(-0.5px) scale(1.03);
+    filter: saturate(1.05) brightness(1.02);
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.3) inset, 0 8px 12px rgba(0, 0, 0, 0.22);
+}
+body.light-theme #folder-browser-view .close-button:hover {
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.32) inset, 0 8px 12px rgba(0, 0, 0, 0.18);
+}
+
+
+/* New: Theme toggle button inside settings modal (top-right) */
+#settings-modal-theme-toggle {
+    position: absolute;
+    top: 15px;
+    right: 15px;
+    background: var(--button-toggle-bg); /* Themed */
+    border-radius: 50%;
+    width: 35px; /* Slightly smaller for settings modal */
+    height: 35px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 1.5em;
+    color: var(--text-color); /* Themed */
+    cursor: pointer;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    transition: background 0.3s ease, transform 0.2s ease, box-shadow 0.3s ease, color 0.3s ease;
+    /* 防止按钮成为拖动区域 */
+    -webkit-app-region: no-drag;
+}
+#settings-modal-theme-toggle:hover {
+    background: var(--button-toggle-hover-bg); /* Themed */
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+#settings-modal-theme-toggle svg {
+    fill: currentColor;
+    width: 24px; /* Slightly smaller icon for settings modal */
+    height: 24px;
+}
+/* Updated: Light theme active color to light blue */
+#settings-modal-theme-toggle.active { /* For light theme active */
+    background: linear-gradient(135deg, #87CEEB, #ADD8E6); /* Sky Blue to Light Blue */
+    box-shadow: 0 2px 8px rgba(135, 206, 235, 0.4);
+}
+
+/* Settings section title - removed as per request for 5 lines of settings */
+/*
+.settings-section-title {
+    font-size: 1.1em;
+    font-weight: bold;
+    color: var(--text-color);
+    margin-bottom: 10px;
+    padding-bottom: 5px;
+    border-bottom: 1px solid var(--glass-border-color);
+    text-align: center;
+    margin-top: 15px;
+}
+*/
+
+/* New: Compact settings row for 5-line structure */
+.settings-row-compact {
+    display: flex;
+    align-items: center;
+    gap: 8px; /* Slightly reduced gap */
+    width: 100%;
+    flex-wrap: nowrap !important; /* CRITICAL: Force items into a single line, override media queries */
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05); /* Subtle separator */
+}
+.settings-row-compact:last-of-type {
+    border-bottom: none; /* No border for the last row */
+}
+.settings-row-compact label {
+    flex-shrink: 0; /* Prevent label from shrinking */
+    font-size: 0.9em;
+    color: var(--info-text-color);
+    min-width: 80px; /* Increased min-width for labels to accommodate "默认路径" etc. */
+    text-align: right; /* Align labels right for better alignment with controls */
+    white-space: nowrap; /* Prevent label text from wrapping */
+}
+
+/* Groups of controls within a row (e.g., for background settings) */
+.settings-row-compact .control-group {
+    display: flex;
+    align-items: center;
+    gap: 5px; /* Very small gap within control groups */
+    flex-shrink: 0; /* Prevent individual control groups from shrinking too much */
+}
+.settings-row-compact .control-group.background-controls {
+    flex-grow: 1; /* Allow background control groups to grow */
+    min-width: 220px; /* Ensure enough space for buttons */
+}
+.settings-row-compact .control-group .sub-label {
+    font-size: 0.85em;
+    color: var(--info-text-color);
+    flex-shrink: 0;
+    white-space: nowrap; /* Prevent sub-label text from wrapping */
+}
+
+/* Compact buttons for settings modal */
+.settings-row-compact .compact-btn {
+    padding: 5px 9px; /* Even smaller padding for very tight fit */
+    font-size: 0.75em; /* Even smaller font size */
+    box-shadow: none;
+    flex-shrink: 0; /* Important: prevent buttons from shrinking */
+    /* 防止按钮成为拖动区域 */
+    -webkit-app-region: no-drag;
+}
+
+/* For the default path input, allow it to grow */
+.settings-row-compact .flex-grow-input-display {
+    flex-grow: 1; /* Allow it to take up remaining space */
+    min-width: 100px; /* A bit more minimum width */
+    padding: 6px 10px;
+    font-size: 0.85em;
+    white-space: nowrap; /* Keep content on one line */
+    overflow: hidden; /* Hide overflow */
+    text-overflow: ellipsis; /* Show ellipsis for overflow */
+    /* 防止输入框成为拖动区域 */
+    -webkit-app-region: no-drag;
+}
+
+/* Compact color picker and grid count select */
+.settings-row-compact .color-picker-compact {
+    width: 35px; /* Slightly smaller fixed width */
+    height: 28px; /* Slightly smaller height */
+    padding: 2px;
+    flex-shrink: 0;
+    cursor: pointer;
+    /* 防止颜色选择器成为拖动区域 */
+    -webkit-app-region: no-drag;
+}
+.settings-row-compact .select-input-compact {
+    width: 78px;
+    min-width: 78px;
+    height: 36px;
+    padding: 0 28px 0 12px;
+    font-size: 0.95em;
+    color: var(--text-color);
+    background-color: var(--input-bg);
+    border: 1px solid var(--input-border);
+    border-radius: 12px;
+    flex-shrink: 0;
+    box-shadow: none;
+    appearance: none;
+    -webkit-appearance: none;
+    background-image:
+        linear-gradient(45deg, transparent 50%, var(--info-text-color) 50%),
+        linear-gradient(135deg, var(--info-text-color) 50%, transparent 50%);
+    background-position:
+        calc(100% - 16px) 15px,
+        calc(100% - 10px) 15px;
+    background-size: 6px 6px, 6px 6px;
+    background-repeat: no-repeat;
+    /* 防止选择框成为拖动区域 */
+    -webkit-app-region: no-drag;
+}
+.settings-row-compact .select-input-compact:focus {
+    outline: none;
+    border-color: var(--button-primary-start);
+    background-color: var(--button-toggle-hover-bg);
+}
+
+.settings-row-compact .language-selector {
+    width: 120px;
+    min-width: 120px;
+    height: 36px;
+    padding: 0 28px 0 12px;
+    font-size: 0.95em;
+    color: var(--text-color);
+    background-color: var(--input-bg);
+    border: 1px solid var(--input-border);
+    border-radius: 12px;
+    flex-shrink: 0;
+    box-shadow: none;
+    appearance: none;
+    -webkit-appearance: none;
+    background-image:
+        linear-gradient(45deg, transparent 50%, var(--info-text-color) 50%),
+        linear-gradient(135deg, var(--info-text-color) 50%, transparent 50%);
+    background-position:
+        calc(100% - 16px) 15px,
+        calc(100% - 10px) 15px;
+    background-size: 6px 6px, 6px 6px;
+    background-repeat: no-repeat;
+    -webkit-app-region: no-drag;
+}
+
+.settings-row-compact .language-selector:focus {
+    outline: none;
+    border-color: var(--button-primary-start);
+    background-color: var(--button-toggle-hover-bg);
+}
+
+
+/* Radio button group for time format or preview background choice */
+.radio-group-inline {
+    display: flex;
+    gap: 10px; /* Reduced gap between radio options */
+    flex-grow: 1; /* Allows it to take up remaining space */
+    justify-content: flex-end; /* Align radios to the right, opposite of label */
+    flex-wrap: nowrap !important; /* CRITICAL: Force radios into a single line, override media queries */
+    min-width: 150px; /* Ensure enough space for two radios + labels */
+}
+.radio-group-inline label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+    user-select: none;
+    color: var(--text-color);
+    margin: 0;
+    min-width: unset;
+    text-align: left;
+    white-space: nowrap; /* Prevent radio label text from wrapping */
+    flex-shrink: 0; /* Prevent labels from shrinking */
+    /* 防止标签成为拖动区域 */
+    -webkit-app-region: no-drag;
+}
+/* Radio button custom styling */
+.radio-group-inline input[type="radio"] {
+    -webkit-appearance: none;
+    appearance: none;
+    background-color: var(--input-bg);
+    margin: 0;
+    font: inherit;
+    color: currentColor;
+    width: 1.15em;
+    height: 1.15em;
+    border: 0.15em solid var(--info-text-color);
+    border-radius: 50%;
+    transform: translateY(-0.075em);
+    display: grid;
+    place-content: center;
+    transition: background-color 0.2s, border-color 0.2s;
+    /* 防止单选框成为拖动区域 */
+    -webkit-app-region: no-drag;
+}
+
+.radio-group-inline input[type="radio"]::before {
+    content: "";
+    width: 0.65em;
+    height: 0.65em;
+    border-radius: 50%;
+    transform: scale(0);
+    transition: transform 0.2s ease-in-out;
+    box-shadow: inset 1em 1em var(--button-toggle-active-start);
+    background-color: CanvasText;
+}
+
+.radio-group-inline input[type="radio"]:checked::before {
+    transform: scale(1);
+}
+.radio-group-inline input[type="radio"]:focus {
+    outline: max(2px, 0.15em) solid currentColor;
+    outline-offset: max(2px, 0.15em);
+}
+
+/* Single button row centering */
+.settings-row-compact.single-button-center {
+    justify-content: center;
+    border-bottom: none; /* Ensure no bottom border for the very last row */
+}
+
+/* Custom Alert Box */
+#custom-alert-box {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: var(--alert-bg); /* Themed */
+    backdrop-filter: blur(5px);
+    border: var(--alert-border); /* Themed */
+    border-radius: 12px;
+    box-shadow: var(--alert-shadow); /* Themed */
+    padding: 25px;
+    z-index: 1000;
+    color: var(--text-color); /* Themed */
+    text-align: center;
+    max-width: 400px; 
+    width: 90%;
+    /* 防止警告框成为拖动区域，因为它的子元素有按钮 */
+    -webkit-app-region: no-drag;
+}
+#custom-alert-box button {
+    background: linear-gradient(135deg, var(--button-primary-start), var(--button-primary-end)); /* Themed */
+    color: var(--text-color); /* Themed */
+}
+
+/* Mark Button (now inside overlay-controls, inheriting its base styles) */
+#overlay-controls #markStarButton {
+    /* Inherits width, height, background, border-radius, etc. from general #overlay-controls button */
+    /* Override font-size for unicode character */
+    font-size: 1.8em; /* Adjust to make the Unicode character larger, fits 40px button better */
+    /* No explicit opacity/visibility here, inherited from parent #overlay-controls */
+}
+
+/* Style for the Unicode icon within the mark button */
+#overlay-controls #markStarButton .mark-icon {
+    font-size: inherit; /* Inherits from parent button */
+    line-height: 1; /* For vertical centering */
+    display: block;
+    /* 防止图标成为拖动区域 */
+    -webkit-app-region: no-drag;
+}
+
+/* Marked state color for the button (background and text color handled by .active class) */
+/* No specific .marked .mark-icon color override needed if button's text color changes */
+
+
+/* Responsive adjustments - Keep these for other UI elements, but override for settings rows */
+@media (max-width: 768px) {
+    #controls-menu {
+        width: 95%;
+        padding: 15px;
+    }
+
+    #folder-browser-view {
+        width: 95%;
+        height: 90vh;
+        padding: 15px;
+    }
+
+    .folder-browser-header {
+        padding: 0 10px 0 35px; /* Adjusted left padding for smaller screens */
+        flex-wrap: wrap; /* Re-enable wrapping for small screens if content exceeds width */
+        justify-content: space-between; /* Keep space-between for alignment */
+        gap: 5px; /* Smaller gap when stacked or tightly packed */
+    }
+
+    .folder-browser-header h1 {
+        font-size: 1.5em;
+    }
+
+    .folder-browser-header #current-library-path {
+        margin: 0; /* Remove horizontal margin */
+        font-size: 0.8em;
+        text-align: left;
+        width: auto; /* Allow content-based width, flex-grow will distribute */
+        flex-basis: 100%; /* Take full width on a new line if it wraps */
+        order: 3; /* Push to the last line if wraps */
+        white-space: normal; /* Allow wrap for long paths on small screens when on new line */
+        overflow: hidden; /* Ensure overflow handling */
+        text-overflow: ellipsis; /* Ensure ellipsis */
+    }
+    .folder-browser-header-buttons {
+        flex-wrap: wrap; /* Allow buttons to wrap */
+        justify-content: flex-end; /* Align right if they wrap */
+        gap: 5px; /* Smaller gap */
+    }
+    .folder-browser-header #goUpFolderButton,
+    .folder-browser-header #libraryFilterMarkedToggle {
+        font-size: 0.8em;
+        padding: 6px 10px;
+        width: auto; /* Auto width */
+    }
+
+    #thumbnails-grid-container {
+        grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+        gap: 10px;
+    }
+
+    .thumbnail-item {
+        height: 140px;
+    }
+    .thumbnail-item img {
+        max-height: 90px;
+    }
+    .thumbnail-item .folder-icon {
+        font-size: 50px;
+    }
+
+    button {
+        padding: 10px 20px;
+        font-size: 0.9em;
+    }
+
+    input[type="number"],
+    input[type="text"] {
+        padding: 8px 12px;
+        font-size: 0.9em;
+    }
+
+    .custom-input-like-button {
+        padding: 8px 12px;
+        font-size: 0.9em;
+    }
+
+    #countdown {
+        font-size: 2em;
+        top: 10px;
+        left: 10px;
+    }
+
+    #overlay-controls {
+        top: 10px;
+        right: 10px;
+        gap: 8px;
+    }
+    #overlay-controls button {
+        width: 35px;
+        height: 35px;
+    }
+    #overlay-controls button svg,
+    #overlay-controls button .mark-icon {
+        width: 24px;
+        height: 24px;
+    }
+
+    #image-navigation-controls button {
+        width: 50px;
+        height: 50px;
+        font-size: 2em;
+    }
+
+    #top-right-menu-buttons {
+        top: 10px;
+        right: 10px;
+        gap: 8px;
+    }
+    /* Main menu circular icon buttons (settings, random, filter marked) - keeping fixed sizes, no more scaling */
+    #settings-button,
+    #random-playback-toggle,
+    #filter-marked-toggle { 
+        width: 36px; /* Fixed size, not scaled by media query */
+        height: 36px; /* Fixed size, not scaled by media query */
+        font-size: 1.5em; /* Not scaled by media query */
+    }
+    #settings-button svg,
+    #random-playback-toggle svg,
+    #filter-marked-toggle svg {
+        width: 24px; /* Fixed size, not scaled by media query */
+        height: 24px; /* Fixed size, not scaled by media query */
+    }
+
+    #settings-modal-content {
+        width: 95%; /* Make it almost full width on small screens */
+        padding: 20px;
+        gap: 10px; /* Further reduce gap on small screens */
+    }
+
+    /* Settings row adjustments for mobile - will be overridden by !important now */
+    .settings-row-compact {
+        flex-direction: row; /* Keep as row due to nowrap */
+        align-items: center;
+        gap: 5px; /* Smaller gap */
+        justify-content: space-between; /* Distribute items */
+        white-space: nowrap; /* Ensure no wrapping */
+        overflow-x: auto; /* Add horizontal scroll for settings row if needed on very small screens */
+    }
+    .settings-row-compact label {
+        width: auto; /* Reset width */
+        text-align: right;
+        min-width: unset; /* Reset min-width */
+    }
+    .settings-row-compact .control-group {
+        width: auto; /* Reset width */
+        flex-grow: 0;
+    }
+    .settings-row-compact .compact-btn {
+        flex-grow: 0; /* Reset flex-grow */
+    }
+    .settings-row-compact .flex-grow-input-display {
+        width: auto; /* Reset width */
+        min-width: 50px; /* Smallest possible input on mobile */
+    }
+
+    .radio-group-inline {
+        flex-direction: row; /* Keep as row due to nowrap */
+        justify-content: flex-end;
+        gap: 5px; /* Smaller gap */
+    }
+    .radio-group-inline label {
+        width: auto; /* Reset width */
+    }
+
+    #settings-modal-theme-toggle {
+        width: 30px; /* Even smaller for settings modal on small screen */
+        height: 30px;
+    }
+    #settings-modal-theme-toggle svg {
+        width: 20px;
+        height: 20px;
+    }
+}
