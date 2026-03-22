@@ -20,6 +20,7 @@ export const DEFAULTS = {
   imageMarks: {},
   startupMode: "lastUsedPath",
   mainMenuSelectedFolderPath: "",
+  language: "zh-CN",
 };
 
 export const IMAGE_EXTENSIONS = ["jpg", "jpeg", "png", "gif", "webp", "bmp", "tiff", "svg"];

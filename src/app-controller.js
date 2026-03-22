@@ -10,6 +10,7 @@ import {
 import { elements, groups } from "./dom.js";
 import { desktop, toFileUrl } from "./api/desktop.js";
 import { createEmptyHistory, formatTimeForHint, getParentPath, hexToRgba, naturalSort, shuffleArray } from "./utils.js";
+import { setLanguage, t, getLanguage, SUPPORTED_LANGUAGES, updatePageI18n } from "./i18n.js";
 
 export class AppController {
   constructor() {
@@ -77,6 +78,7 @@ export class AppController {
       currentTrafficLightVisibility: null,
       currentFolderItems: [],
       currentPage: 0,
+      currentLanguage: "zh-CN",
       ...createEmptyHistory(),
     };
   }
@@ -186,6 +188,10 @@ export class AppController {
         await desktop.saveSetting("startupMode", this.state.startupMode);
       });
     });
+
+    elements.languageSelector.addEventListener("change", (event) => {
+      this.setLanguage(event.target.value);
+    });
   }
 
   async loadSettings() {
@@ -207,6 +213,7 @@ export class AppController {
       "startupMode",
       "imageMarks",
       "isLightThemeEnabled",
+      "language",
     ];
 
     const values = await desktop.loadSettings(keys);
@@ -228,17 +235,19 @@ export class AppController {
     this.state.isAlwaysOnTop = values.isAlwaysOnTop ?? DEFAULTS.isAlwaysOnTop;
     this.state.startupMode = values.startupMode ?? DEFAULTS.startupMode;
     this.state.imageMarks = values.imageMarks || DEFAULTS.imageMarks;
+    this.state.currentLanguage = values.language || DEFAULTS.language;
 
+    this.applyLanguage(this.state.currentLanguage);
     this.applyTheme(this.state.isLightThemeEnabled, false);
     this.setGridColor(this.state.currentGridColorHex, false);
     this.setGridSize(this.state.currentGridSize, false);
     this.setTimeFormat(this.state.currentTimeFormat, false);
 
     elements.mainMenuStaticImagePathRow.style.display = this.state.mainMenuBackgroundChoice === "staticImage" ? "flex" : "none";
-    this.setValueIfChanged(elements.mainMenuBackgroundPathDisplay, this.state.currentMainMenuBackgroundPath || DEFAULT_MAIN_MENU_BACKGROUND_LABEL);
+    this.setValueIfChanged(elements.mainMenuBackgroundPathDisplay, this.state.currentMainMenuBackgroundPath || t("defaultBackgroundImage"));
     elements.staticImagePathRow.style.display = this.state.previewBackgroundChoice === "staticImage" ? "flex" : "none";
-    this.setValueIfChanged(elements.previewBackgroundPathDisplay, this.state.currentPreviewBackgroundPath || "未选择静态图片");
-    this.setValueIfChanged(elements.defaultImageFolderPathDisplay, this.state.currentDefaultImageFolderPath || "未设置默认路径");
+    this.setValueIfChanged(elements.previewBackgroundPathDisplay, this.state.currentPreviewBackgroundPath || t("notSelectedStaticImage"));
+    this.setValueIfChanged(elements.defaultImageFolderPathDisplay, this.state.currentDefaultImageFolderPath || t("notSetDefaultPath"));
     elements.gridColorPicker.value = this.state.currentGridColorHex;
     this.setValueIfChanged(elements.gridSizeInput, this.state.currentGridSize);
 
@@ -398,6 +407,49 @@ export class AppController {
     if (this.state.isGridEnabled && this.isPlaybackVisible()) {
       this.drawGrid();
     }
+  }
+
+  applyLanguage(lang, persist = true) {
+    if (!SUPPORTED_LANGUAGES.includes(lang)) {
+      lang = "zh-CN";
+    }
+    this.state.currentLanguage = lang;
+    setLanguage(lang);
+    if (persist) {
+      desktop.saveSetting("language", lang);
+    }
+    updatePageI18n();
+    this.updateUITexts();
+  }
+
+  setLanguage(lang) {
+    this.applyLanguage(lang, true);
+  }
+
+  updateUITexts() {
+    const lang = this.state.currentLanguage;
+
+    if (elements.languageSelector) {
+      elements.languageSelector.value = lang;
+    }
+
+    updatePageI18n();
+
+    this.setValueIfChanged(
+      elements.mainMenuBackgroundPathDisplay,
+      this.state.currentMainMenuBackgroundPath || t("defaultBackgroundImage")
+    );
+    this.setValueIfChanged(
+      elements.previewBackgroundPathDisplay,
+      this.state.currentPreviewBackgroundPath || t("notSelectedStaticImage")
+    );
+    this.setValueIfChanged(
+      elements.defaultImageFolderPathDisplay,
+      this.state.currentDefaultImageFolderPath || t("notSetDefaultPath")
+    );
+
+    this.refreshMainMenuEligibilityState();
+    this.updateMarkingUI();
   }
 
   getDefaultPreviewBackgroundColor() {
@@ -937,32 +989,32 @@ export class AppController {
     const eligibleCount = this.getEligibleImageCount();
 
     if (!this.state.mainMenuSelectedFolderPath) {
-      this.setTextContentIfChanged(elements.mainMenuHintText, "选择文件夹以开始速写。");
+      this.setTextContentIfChanged(elements.mainMenuHintText, t("selectFolderHint"));
       return;
     }
 
     if (eligibleCount === 0 && this.state.imageUrls.length > 0 && this.state.isFilterMarkedEnabled) {
-      this.setTextContentIfChanged(elements.mainMenuHintText, "该文件夹下图片已全部标记。请调整过滤设置或选择其他文件夹。");
+      this.setTextContentIfChanged(elements.mainMenuHintText, t("allMarkedAdjustFilter"));
       return;
     }
 
     if (this.state.imageUrls.length === 0) {
-      this.setTextContentIfChanged(elements.mainMenuHintText, "当前文件夹中没有可速写的图片。");
+      this.setTextContentIfChanged(elements.mainMenuHintText, t("noSketchImages"));
       return;
     }
 
     if (this.state.displayTime === Infinity) {
-      this.setTextContentIfChanged(elements.mainMenuHintText, `当前一共选择了${eligibleCount}张图片，时间设置为无限制。`);
+      this.setTextContentIfChanged(elements.mainMenuHintText, `${t("totalImagesSelected")}${eligibleCount}${t("imagesTimeSetToUnlimited")}`);
       return;
     }
 
     if (Number.isNaN(this.state.displayTime) || this.state.displayTime <= 0) {
-      this.setTextContentIfChanged(elements.mainMenuHintText, `当前一共选择了${eligibleCount}张图片。请选择一个速写时间。`);
+      this.setTextContentIfChanged(elements.mainMenuHintText, `${t("totalImagesSelected")}${eligibleCount}${t("imagesPleaseSelectTime")}`);
       return;
     }
 
     const estimated = formatTimeForHint(eligibleCount * this.state.displayTime);
-    this.setTextContentIfChanged(elements.mainMenuHintText, `当前一共选择了${eligibleCount}张图片，估计耗时${estimated}。`);
+    this.setTextContentIfChanged(elements.mainMenuHintText, `${t("estimatedTime")}${eligibleCount}${t("estimated")}${estimated}`);
   }
 
   initiateSketchSession() {
@@ -1404,7 +1456,7 @@ export class AppController {
 
   async clearMainMenuBackgroundImage() {
     this.state.currentMainMenuBackgroundPath = "";
-    this.setValueIfChanged(elements.mainMenuBackgroundPathDisplay, DEFAULT_MAIN_MENU_BACKGROUND_LABEL);
+    this.setValueIfChanged(elements.mainMenuBackgroundPathDisplay, t("defaultBackgroundImage"));
     await desktop.saveSetting("mainMenuBackgroundPath", "");
     if (!this.isPlaybackVisible()) {
       this.updateMainMenuBackground();
@@ -1451,7 +1503,7 @@ export class AppController {
   async clearDefaultFolder() {
     const previousDefault = this.state.currentDefaultImageFolderPath;
     this.state.currentDefaultImageFolderPath = "";
-    this.setValueIfChanged(elements.defaultImageFolderPathDisplay, "未设置默认路径");
+    this.setValueIfChanged(elements.defaultImageFolderPathDisplay, t("notSetDefaultPath"));
     await desktop.saveSetting("defaultImageFolderPath", "");
 
     if (this.state.mainMenuSelectedFolderPath === previousDefault) {
@@ -1592,14 +1644,14 @@ export class AppController {
     const file = this.state.imageFiles[this.state.currentImageIndex];
     if (!file) {
       elements.markStarButton.classList.remove("active");
-      elements.markStarButton.setAttribute("data-tooltip", "未标记");
+      elements.markStarButton.setAttribute("data-tooltip", t("unmarked"));
       return;
     }
 
     const marks = this.state.imageMarks[file.path];
     if (!Array.isArray(marks) || marks.length === 0) {
       elements.markStarButton.classList.remove("active");
-      elements.markStarButton.setAttribute("data-tooltip", "未标记");
+      elements.markStarButton.setAttribute("data-tooltip", t("unmarked"));
       return;
     }
 

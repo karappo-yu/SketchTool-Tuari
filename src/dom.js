@@ -71,6 +71,7 @@ export const elements = {
   nextPageButton: byId("nextPageButton"),
   pageInfoDisplay: byId("pageInfoDisplay"),
   hiddenImageCanvas: byId("hidden-image-canvas"),
+  languageSelector: byId("languageSelector"),
 };
 
 export const groups = {

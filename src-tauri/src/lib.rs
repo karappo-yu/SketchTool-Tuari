@@ -99,6 +99,7 @@ fn default_settings() -> Map<String, Value> {
     defaults.insert("imageMarks".into(), json!({}));
     defaults.insert("startupMode".into(), json!("lastUsedPath"));
     defaults.insert("mainMenuSelectedFolderPath".into(), json!(""));
+    defaults.insert("language".into(), json!("zh-CN"));
     defaults
 }
 
