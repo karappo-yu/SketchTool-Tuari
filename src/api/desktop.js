@@ -38,6 +38,10 @@ export const desktop = {
     );
   },
 
+  async isDirectory(path) {
+    return command("is_directory", { path });
+  },
+
   async openFileInFinder(filePath) {
     return command("open_file_in_finder", { filePath });
   },

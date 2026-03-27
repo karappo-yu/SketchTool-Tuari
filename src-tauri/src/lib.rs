@@ -367,6 +367,11 @@ fn read_folder_images(folder_path: String) -> Vec<FolderItem> {
 }
 
 #[tauri::command]
+fn is_directory(path: String) -> bool {
+    Path::new(&path).is_dir()
+}
+
+#[tauri::command]
 fn open_file_in_finder(file_path: String) -> CommandResponse {
     match open_in_file_manager(Path::new(&file_path)) {
         Ok(_) => ok(),
@@ -592,6 +597,7 @@ pub fn run() {
             open_file_dialog,
             open_folder_dialog,
             read_folder_images,
+            is_directory,
             open_file_in_finder,
             open_file_in_default_app,
             save_image_mark,

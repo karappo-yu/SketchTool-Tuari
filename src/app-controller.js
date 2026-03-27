@@ -635,6 +635,35 @@ export class AppController {
     await this.showFolderBrowserView(folderPath);
   }
 
+  async handleDroppedPaths(paths) {
+    if (!Array.isArray(paths) || paths.length === 0) {
+      return;
+    }
+
+    let folderPath = "";
+    for (const path of paths) {
+      if (await desktop.isDirectory(path)) {
+        folderPath = path;
+        break;
+      }
+    }
+
+    if (!folderPath) {
+      this.showAlert("请拖入文件夹。", "提示");
+      return;
+    }
+
+    try {
+      this.state.mainMenuSelectedFolderPath = folderPath;
+      await desktop.saveSetting("mainMenuSelectedFolderPath", folderPath);
+      await this.loadImagesForSketchFolder(folderPath);
+      await this.showFolderBrowserView(folderPath);
+    } catch (error) {
+      console.error(error);
+      this.showAlert("拖入的文件夹无法读取，请检查权限后重试。", "加载错误");
+    }
+  }
+
   async loadImagesForSketchFolder(folderPath) {
     const items = await desktop.readFolderImages(folderPath);
     const imageFiles = items.filter((item) => item.type === "file").sort(naturalSort);

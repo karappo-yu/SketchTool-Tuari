@@ -31,4 +31,13 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   const controller = new AppController();
   await controller.init();
+
+  await appWindow.onDragDropEvent(async (event) => {
+    const payload = event?.payload;
+    if (payload?.type !== "drop" || !Array.isArray(payload.paths) || payload.paths.length === 0) {
+      return;
+    }
+
+    await controller.handleDroppedPaths(payload.paths);
+  });
 });
