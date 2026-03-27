@@ -18,6 +18,8 @@
     --button-nav-hover-bg: rgba(255, 255, 255, 0.5);
     --input-bg: rgba(255, 255, 255, 0.05);
     --input-border: rgba(255, 255, 255, 0.2);
+    --dropdown-bg: rgba(32, 36, 44, 0.72);
+    --dropdown-hover-bg: rgba(255, 255, 255, 0.12);
     --info-text-color: #a0a0a0;
     --default-preview-bg: #1a1a2e;
     --alert-bg: rgba(40, 44, 52, 0.9);
@@ -48,6 +50,8 @@ body.light-theme {
     --button-nav-hover-bg: rgba(0, 0, 0, 0.35);
     --input-bg: rgba(0, 0, 0, 0.03);
     --input-border: rgba(0, 0, 0, 0.15);
+    --dropdown-bg: rgba(255, 255, 255, 0.72);
+    --dropdown-hover-bg: rgba(0, 0, 0, 0.08);
     --info-text-color: #666666;
     --default-preview-bg: #f8f9fa; /* Lighter preview background */
     --alert-bg: rgba(255, 255, 255, 0.95);
@@ -355,6 +359,75 @@ body.light-theme .delete-mark-button:hover {
     display: flex;
     flex-direction: column;
     gap: 8px;
+}
+
+.main-setup-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+}
+
+.inline-setup-field {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1 1 0;
+    min-width: 0;
+}
+
+.inline-setup-field label {
+    margin: 0;
+    white-space: nowrap;
+    font-size: 0.9em;
+}
+
+.inline-setup-field input {
+    min-width: 0;
+}
+
+.input-with-dropdown {
+    position: relative;
+    width: 100%;
+}
+
+.custom-dropdown {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    width: 100%;
+    z-index: 60;
+    background: var(--dropdown-bg);
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--input-border);
+    border-radius: 12px;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.18);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.custom-dropdown.hidden {
+    display: none;
+}
+
+.custom-dropdown-option {
+    width: 100%;
+    text-align: left;
+    padding: 10px 14px;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    font-size: 0.95em;
+    font-weight: 500;
+    color: var(--text-color);
+}
+
+.custom-dropdown-option:hover {
+    background: var(--dropdown-hover-bg);
+    transform: none;
+    box-shadow: none;
 }
 
 .input-group label {
@@ -1343,6 +1416,22 @@ body.light-theme #folder-browser-view .close-button:hover {
     .custom-input-like-button {
         padding: 8px 12px;
         font-size: 0.9em;
+    }
+
+    .main-setup-row {
+        flex-direction: row;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .inline-setup-field {
+        flex-direction: row;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .inline-setup-field label {
+        font-size: 0.86em;
     }
 
     #countdown {

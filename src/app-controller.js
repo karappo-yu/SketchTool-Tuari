@@ -16,14 +16,6 @@ export class AppController {
   constructor() {
     this.ctx = elements.gridCanvas.getContext("2d");
     this.hiddenImageCtx = elements.hiddenImageCanvas.getContext("2d", { willReadFrequently: true });
-    this.presetTimeButtons = [
-      elements.preset30sButton,
-      elements.preset60sButton,
-      elements.preset120sButton,
-      elements.preset300sButton,
-      elements.preset600sButton,
-      elements.presetInfiniteTimeButton,
-    ];
     this.eligibleImagesCache = {
       imageFilesRef: null,
       imageMarksRef: null,
@@ -51,6 +43,7 @@ export class AppController {
       imageUrls: [],
       currentImageIndex: -1,
       displayTime: 60,
+      imageCount: Infinity,
       countdownTimer: null,
       remainingTime: 60,
       isPlaying: false,
@@ -90,7 +83,8 @@ export class AppController {
     await this.loadSettings();
     await this.bootstrapInitialView();
     this.syncToggleButtons();
-    this.updatePresetTimeButtons(this.state.displayTime);
+    this.syncDisplayTimeInput();
+    this.syncImageCountInput();
     this.refreshMainMenuEligibilityState();
   }
 
@@ -112,6 +106,23 @@ export class AppController {
     elements.gridSizeInput.addEventListener("change", (event) => this.handleGridSizeInput(event.target.value));
     elements.resetGridSettingsButton.addEventListener("click", () => this.resetGridSettings());
     elements.displayTimeInput.addEventListener("input", (event) => this.handleDisplayTimeInput(event.target.value));
+    elements.displayTimeInput.addEventListener("focus", () => this.openDisplayTimeDropdown());
+    elements.displayTimeInput.addEventListener("click", () => this.openDisplayTimeDropdown());
+    elements.displayTimeInput.addEventListener("change", (event) => this.handleDisplayTimeCommit(event.target.value));
+    elements.displayTimeInput.addEventListener("blur", (event) => this.handleDisplayTimeCommit(event.target.value));
+    elements.imageCountInput.addEventListener("input", (event) => this.handleImageCountInput(event.target.value));
+    elements.imageCountInput.addEventListener("focus", () => this.openImageCountDropdown());
+    elements.imageCountInput.addEventListener("click", () => this.openImageCountDropdown());
+    elements.imageCountInput.addEventListener("change", (event) => this.handleImageCountCommit(event.target.value));
+    elements.imageCountInput.addEventListener("blur", (event) => this.handleImageCountCommit(event.target.value));
+    groups.imageCountDropdownOptions.forEach((option) => {
+      option.addEventListener("mousedown", (event) => this.handleImageCountDropdownSelect(event));
+    });
+    groups.displayTimeDropdownOptions.forEach((option) => {
+      option.addEventListener("mousedown", (event) => this.handleDisplayTimeDropdownSelect(event));
+    });
+    document.addEventListener("pointerdown", (event) => this.handleGlobalPointerDown(event), true);
+    document.addEventListener("keydown", (event) => this.handleGlobalKeyDown(event));
     elements.mirrorToggle.addEventListener("click", () => this.toggleMirrorEffect());
     elements.overlayMirrorToggle.addEventListener("click", () => this.toggleMirrorEffect());
     elements.grayscaleToggle.addEventListener("click", () => this.toggleGrayscaleEffect());
@@ -137,17 +148,6 @@ export class AppController {
       if (this.state.isGridEnabled && !elements.imageDisplayArea.classList.contains("hidden")) {
         this.scheduleGridRedraw();
       }
-    });
-
-    [
-      [elements.preset30sButton, 30],
-      [elements.preset60sButton, 60],
-      [elements.preset120sButton, 120],
-      [elements.preset300sButton, 300],
-      [elements.preset600sButton, 600],
-      [elements.presetInfiniteTimeButton, Infinity],
-    ].forEach(([button, value]) => {
-      button.addEventListener("click", () => this.setPresetTime(value, button));
     });
 
     groups.mainMenuBackgroundChoiceRadios.forEach((radio) => {
@@ -449,9 +449,134 @@ export class AppController {
       elements.defaultImageFolderPathDisplay,
       this.state.currentDefaultImageFolderPath || t("notSetDefaultPath")
     );
+    this.syncDisplayTimeInput();
+    this.syncImageCountInput();
+    const allOption = elements.imageCountDropdown?.querySelector('[data-count-value="all"]');
+    if (allOption) {
+      allOption.textContent = t("allOption");
+    }
 
     this.refreshMainMenuEligibilityState();
     this.updateMarkingUI();
+  }
+
+  syncImageCountInput() {
+    this.setValueIfChanged(elements.imageCountInput, this.state.imageCount === Infinity ? t("allOption") : this.state.imageCount);
+  }
+
+  syncDisplayTimeInput() {
+    this.setValueIfChanged(elements.displayTimeInput, this.state.displayTime === Infinity ? t("infiniteTime") : this.state.displayTime);
+  }
+
+  openDisplayTimeDropdown() {
+    this.closeImageCountDropdown();
+    elements.displayTimeDropdown?.classList.remove("hidden");
+  }
+
+  closeDisplayTimeDropdown() {
+    elements.displayTimeDropdown?.classList.add("hidden");
+  }
+
+  toggleDisplayTimeDropdown() {
+    if (elements.displayTimeDropdown?.classList.contains("hidden")) {
+      this.openDisplayTimeDropdown();
+      return;
+    }
+    this.closeDisplayTimeDropdown();
+  }
+
+  openImageCountDropdown() {
+    this.closeDisplayTimeDropdown();
+    elements.imageCountDropdown?.classList.remove("hidden");
+  }
+
+  closeImageCountDropdown() {
+    elements.imageCountDropdown?.classList.add("hidden");
+  }
+
+  toggleImageCountDropdown() {
+    if (elements.imageCountDropdown?.classList.contains("hidden")) {
+      this.openImageCountDropdown();
+      return;
+    }
+    this.closeImageCountDropdown();
+  }
+
+  handleImageCountDropdownSelect(event) {
+    event.preventDefault();
+    const target = event.currentTarget;
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+
+    const value = target.dataset.countValue;
+    if (value === "all") {
+      this.state.imageCount = Infinity;
+      this.syncImageCountInput();
+      this.updateMainMenuHintText();
+      this.closeImageCountDropdown();
+      return;
+    }
+
+    this.setValueIfChanged(elements.imageCountInput, value || "");
+    this.handleImageCountInput(value || "");
+    this.handleImageCountCommit(value || "");
+    this.closeImageCountDropdown();
+  }
+
+  handleDisplayTimeDropdownSelect(event) {
+    event.preventDefault();
+    const target = event.currentTarget;
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+
+    const value = target.dataset.timeValue;
+    if (!value) {
+      return;
+    }
+
+    if (value === "infinite") {
+      this.state.displayTime = Infinity;
+      this.syncDisplayTimeInput();
+      this.updateMainMenuHintText();
+      this.closeDisplayTimeDropdown();
+      return;
+    }
+
+    this.setValueIfChanged(elements.displayTimeInput, value);
+    this.handleDisplayTimeInput(value);
+    this.handleDisplayTimeCommit(value);
+    this.closeDisplayTimeDropdown();
+  }
+
+  handleGlobalPointerDown(event) {
+    if (!(event.target instanceof Node)) {
+      return;
+    }
+
+    const displayWrapper = elements.displayTimeInputWrapper;
+    if (displayWrapper && displayWrapper.contains(event.target)) {
+      return;
+    }
+
+    const countWrapper = elements.imageCountInputWrapper;
+    if (countWrapper && countWrapper.contains(event.target)) {
+      return;
+    }
+
+    this.handleDisplayTimeCommit(elements.displayTimeInput.value);
+    this.closeDisplayTimeDropdown();
+    this.handleImageCountCommit(elements.imageCountInput.value);
+    this.closeImageCountDropdown();
+  }
+
+  handleGlobalKeyDown(event) {
+    if (event.key !== "Escape") {
+      return;
+    }
+    this.closeDisplayTimeDropdown();
+    this.closeImageCountDropdown();
   }
 
   getDefaultPreviewBackgroundColor() {
@@ -992,6 +1117,16 @@ export class AppController {
     return this.getEligibleImageRawIndexes().length;
   }
 
+  getTargetSketchCount(eligibleCount = this.getEligibleImageCount()) {
+    if (this.state.imageCount === Infinity) {
+      return eligibleCount;
+    }
+    if (Number.isNaN(this.state.imageCount) || this.state.imageCount <= 0) {
+      return NaN;
+    }
+    return Math.min(eligibleCount, this.state.imageCount);
+  }
+
   refreshMainMenuEligibilityState() {
     this.updateStartButtonState();
     this.updateMainMenuHintText();
@@ -1021,6 +1156,7 @@ export class AppController {
 
   updateMainMenuHintText() {
     const eligibleCount = this.getEligibleImageCount();
+    const targetCount = this.getTargetSketchCount(eligibleCount);
 
     if (!this.state.mainMenuSelectedFolderPath) {
       this.setTextContentIfChanged(elements.mainMenuHintText, t("selectFolderHint"));
@@ -1037,18 +1173,23 @@ export class AppController {
       return;
     }
 
+    if (Number.isNaN(targetCount) || targetCount <= 0) {
+      this.setTextContentIfChanged(elements.mainMenuHintText, `${t("totalImagesSelected")}${eligibleCount}${t("imagesPleaseSelectCount")}`);
+      return;
+    }
+
     if (this.state.displayTime === Infinity) {
-      this.setTextContentIfChanged(elements.mainMenuHintText, `${t("totalImagesSelected")}${eligibleCount}${t("imagesTimeSetToUnlimited")}`);
+      this.setTextContentIfChanged(elements.mainMenuHintText, `${t("totalImagesSelected")}${targetCount}${t("imagesTimeSetToUnlimited")}`);
       return;
     }
 
     if (Number.isNaN(this.state.displayTime) || this.state.displayTime <= 0) {
-      this.setTextContentIfChanged(elements.mainMenuHintText, `${t("totalImagesSelected")}${eligibleCount}${t("imagesPleaseSelectTime")}`);
+      this.setTextContentIfChanged(elements.mainMenuHintText, `${t("totalImagesSelected")}${targetCount}${t("imagesPleaseSelectTime")}`);
       return;
     }
 
-    const estimated = formatTimeForHint(eligibleCount * this.state.displayTime);
-    this.setTextContentIfChanged(elements.mainMenuHintText, `${t("estimatedTime")}${eligibleCount}${t("estimated")}${estimated}`);
+    const estimated = formatTimeForHint(targetCount * this.state.displayTime);
+    this.setTextContentIfChanged(elements.mainMenuHintText, `${t("estimatedTime")}${targetCount}${t("estimated")}${estimated}`);
   }
 
   initiateSketchSession() {
@@ -1057,7 +1198,12 @@ export class AppController {
     }
 
     if (this.state.displayTime !== Infinity && (Number.isNaN(this.state.displayTime) || this.state.displayTime <= 0)) {
-      this.showAlert("请设置一个有效的图片显示时间。", "时间设置错误");
+      this.showAlert(t("pleaseSetValidDisplayTime"), t("timeSettingError"));
+      return;
+    }
+
+    if (this.state.imageCount !== Infinity && (Number.isNaN(this.state.imageCount) || this.state.imageCount <= 0)) {
+      this.showAlert(t("pleaseSetValidImageCount"), t("countSettingError"));
       return;
     }
 
@@ -1066,7 +1212,14 @@ export class AppController {
       return;
     }
 
-    this.state.currentSessionPlaybackQueue = this.state.isRandomPlayback ? shuffleArray(eligibleIndexes) : [...eligibleIndexes];
+    const queue = this.state.isRandomPlayback ? shuffleArray(eligibleIndexes) : [...eligibleIndexes];
+    const targetCount = this.getTargetSketchCount(eligibleIndexes.length);
+    this.state.currentSessionPlaybackQueue = queue.slice(0, targetCount);
+
+    if (this.state.currentSessionPlaybackQueue.length === 0) {
+      return;
+    }
+
     this.state.displayedImageHistory = [];
     this.state.historyPointer = -1;
     this.state.isPlaying = true;
@@ -1429,34 +1582,79 @@ export class AppController {
     await this.showFolderBrowserView(parent);
   }
 
-  setPresetTime(time, activeButton = null) {
-    this.state.displayTime = time;
-    elements.displayTimeInput.disabled = time === Infinity;
-    this.setValueIfChanged(elements.displayTimeInput, time === Infinity ? "" : time);
-    this.updatePresetTimeButtons(time, activeButton);
-    this.updateMainMenuHintText();
-  }
-
-  updatePresetTimeButtons(currentDisplayTimeValue, clickedButton = null) {
-    this.presetTimeButtons.forEach((button) => {
-      button.classList.remove("active", "disabled-preset");
-    });
-
-    if (clickedButton) {
-      clickedButton.classList.add("active");
-    } else {
-      this.presetTimeButtons.forEach((button) => {
-        const value = button.id === "presetInfiniteTime" ? Infinity : parseInt(button.textContent, 10);
-        button.classList.toggle("active", value === currentDisplayTimeValue);
-      });
-    }
-  }
-
   handleDisplayTimeInput(value) {
-    const nextValue = parseInt(value, 10);
+    const normalized = `${value ?? ""}`.trim();
+    const lowered = normalized.toLowerCase?.() ?? normalized;
+    const infiniteKeywords = new Set([t("infiniteTime"), "∞", "♾️", "infinite", "unlimited"]);
+
+    if (infiniteKeywords.has(normalized) || infiniteKeywords.has(lowered)) {
+      this.state.displayTime = Infinity;
+      this.updateMainMenuHintText();
+      return;
+    }
+
+    if (normalized === "") {
+      this.state.displayTime = NaN;
+      this.updateMainMenuHintText();
+      return;
+    }
+
+    const nextValue = parseInt(normalized, 10);
     this.state.displayTime = Number.isNaN(nextValue) ? NaN : nextValue;
-    this.updatePresetTimeButtons(this.state.displayTime);
     this.updateMainMenuHintText();
+  }
+
+  handleDisplayTimeCommit(value) {
+    const normalized = `${value ?? ""}`.trim();
+    if (normalized === "") {
+      return;
+    }
+
+    if (this.state.displayTime === Infinity) {
+      this.syncDisplayTimeInput();
+      return;
+    }
+
+    if (Number.isNaN(this.state.displayTime) || this.state.displayTime <= 0) {
+      return;
+    }
+
+    this.syncDisplayTimeInput();
+  }
+
+  handleImageCountInput(value) {
+    const normalized = `${value ?? ""}`.trim();
+    const allKeywords = new Set([t("allOption"), "全部", "all", "すべて"]);
+
+    if (allKeywords.has(normalized.toLowerCase?.() ? normalized.toLowerCase() : normalized) || allKeywords.has(normalized)) {
+      this.state.imageCount = Infinity;
+      this.updateMainMenuHintText();
+      return;
+    }
+
+    if (normalized === "") {
+      this.state.imageCount = NaN;
+      this.updateMainMenuHintText();
+      return;
+    }
+
+    const nextValue = parseInt(normalized, 10);
+    this.state.imageCount = Number.isNaN(nextValue) ? NaN : nextValue;
+    this.updateMainMenuHintText();
+  }
+
+  handleImageCountCommit(value) {
+    const normalized = `${value ?? ""}`.trim();
+    if (normalized === "") {
+      this.state.imageCount = Infinity;
+      this.syncImageCountInput();
+      this.updateMainMenuHintText();
+      return;
+    }
+
+    if (this.state.imageCount === Infinity) {
+      this.syncImageCountInput();
+    }
   }
 
   async toggleRandomPlayback() {

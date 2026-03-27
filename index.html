@@ -22,18 +22,34 @@
                 </div>
             </div>
 
-            <div class="input-group">
-                <label for="displayTime" data-i18n="displayTimeLabel">每张图片显示时间 (秒):</label>
-                <input type="number" id="displayTime" value="60" min="1">
-            </div>
-            <!-- 常用时间选项 - 放在同一行 -->
-            <div class="buttons-group" id="preset-time-buttons" style="flex-wrap: nowrap; overflow-x: auto;">
-                <button id="preset30s" class="toggle" data-i18n="preset30s">30秒</button>
-                <button id="preset60s" class="toggle active" data-i18n="preset60s">60秒</button> <!-- 默认激活 -->
-                <button id="preset120s" class="toggle" data-i18n="preset120s">120秒</button>
-                <button id="preset300s" class="toggle" data-i18n="preset300s">300秒</button>
-                <button id="preset600s" class="toggle" data-i18n="preset600s">600秒</button>
-                <button id="presetInfiniteTime" class="toggle" data-i18n="infiniteTime">♾️</button> <!-- NEW: Infinite time option -->
+            <div class="main-setup-row">
+                <div class="inline-setup-field">
+                    <label for="displayTime" data-i18n="displayTimeLabel">单张时间:</label>
+                    <div id="displayTimeInputWrapper" class="input-with-dropdown">
+                        <input type="text" id="displayTime" value="60" autocomplete="off">
+                        <div id="displayTimeDropdown" class="custom-dropdown hidden">
+                            <button type="button" class="custom-dropdown-option" data-time-value="30" data-i18n="preset30s">30秒</button>
+                            <button type="button" class="custom-dropdown-option" data-time-value="60" data-i18n="preset60s">60秒</button>
+                            <button type="button" class="custom-dropdown-option" data-time-value="120" data-i18n="preset120s">120秒</button>
+                            <button type="button" class="custom-dropdown-option" data-time-value="300" data-i18n="preset300s">300秒</button>
+                            <button type="button" class="custom-dropdown-option" data-time-value="600" data-i18n="preset600s">600秒</button>
+                            <button type="button" class="custom-dropdown-option" data-time-value="infinite" data-i18n="infiniteTime">♾️</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="inline-setup-field">
+                    <label for="imageCount" data-i18n="imageCountLabel">张数:</label>
+                    <div id="imageCountInputWrapper" class="input-with-dropdown">
+                        <input type="text" id="imageCount" value="全部" data-i18n-placeholder="allOption" autocomplete="off">
+                        <div id="imageCountDropdown" class="custom-dropdown hidden">
+                            <button type="button" class="custom-dropdown-option" data-count-value="all" data-i18n="allOption">全部</button>
+                            <button type="button" class="custom-dropdown-option" data-count-value="10">10</button>
+                            <button type="button" class="custom-dropdown-option" data-count-value="20">20</button>
+                            <button type="button" class="custom-dropdown-option" data-count-value="30">30</button>
+                            <button type="button" class="custom-dropdown-option" data-count-value="50">50</button>
+                        </div>
+                    </div>
+                </div>
             </div>
             <div class="buttons-group">
                 <button id="startButton" class="primary" data-i18n-title="startSketch" data-tooltip="开始速写" data-i18n="startSketch">开始速写</button>
