@@ -11,6 +11,7 @@ export const DEFAULTS = {
   gridColor: "#FFFFFF",
   gridSize: 8,
   timeFormat: "hours:minutes:seconds",
+  countdownStyle: "text",
   isRandomPlayback: true,
   isAlwaysOnTop: false,
   isLibraryFilterMarkedEnabled: false,

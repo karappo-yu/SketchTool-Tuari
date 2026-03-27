@@ -45,6 +45,9 @@ export class AppController {
       displayTime: 60,
       imageCount: Infinity,
       countdownTimer: null,
+      countdownAdvanceTimeout: null,
+      lowTimeAlertTimeout: null,
+      hasLowTimeAlertShown: false,
       remainingTime: 60,
       isPlaying: false,
       isPaused: false,
@@ -69,6 +72,8 @@ export class AppController {
       currentGridColorHex: DEFAULTS.gridColor,
       currentGridSize: DEFAULTS.gridSize,
       currentTimeFormat: DEFAULTS.timeFormat,
+      currentCountdownStyle: DEFAULTS.countdownStyle,
+      currentCountdownDisplayStyle: "hms",
       currentTrafficLightVisibility: null,
       currentFolderItems: [],
       currentPage: 0,
@@ -172,15 +177,17 @@ export class AppController {
       });
     });
 
-    groups.timeFormatRadios.forEach((radio) => {
-      radio.addEventListener("change", (event) => this.setTimeFormat(event.target.value));
-    });
-
     groups.countdownVisibilityRadios.forEach((radio) => {
       radio.addEventListener("change", async (event) => {
         this.state.isCountdownHidden = event.target.value === "hide";
         await desktop.saveSetting("isCountdownHidden", this.state.isCountdownHidden);
         this.updateCountdownDisplay();
+      });
+    });
+
+    groups.countdownDisplayStyleRadios.forEach((radio) => {
+      radio.addEventListener("change", async (event) => {
+        await this.applyCountdownDisplayStyle(event.target.value, true);
       });
     });
 
@@ -205,6 +212,8 @@ export class AppController {
       "gridColor",
       "gridSize",
       "timeFormat",
+      "countdownStyle",
+      "countdownDisplayStyle",
       "isCountdownHidden",
       "defaultImageFolderPath",
       "mainMenuSelectedFolderPath",
@@ -227,7 +236,6 @@ export class AppController {
     this.state.currentPreviewBackgroundPath = values.previewBackgroundPath || DEFAULTS.previewBackgroundPath;
     this.state.currentGridColorHex = values.gridColor || DEFAULTS.gridColor;
     this.state.currentGridSize = this.normalizeGridCount(values.gridSize ?? DEFAULTS.gridSize);
-    this.state.currentTimeFormat = values.timeFormat === "minutes:seconds" ? DEFAULTS.timeFormat : (values.timeFormat || DEFAULTS.timeFormat);
     this.state.isCountdownHidden = values.isCountdownHidden ?? DEFAULTS.isCountdownHidden;
     this.state.currentDefaultImageFolderPath = values.defaultImageFolderPath || DEFAULTS.defaultImageFolderPath;
     this.state.mainMenuSelectedFolderPath = values.mainMenuSelectedFolderPath || DEFAULTS.mainMenuSelectedFolderPath;
@@ -243,7 +251,14 @@ export class AppController {
     this.applyTheme(this.state.isLightThemeEnabled, false);
     this.setGridColor(this.state.currentGridColorHex, false);
     this.setGridSize(this.state.currentGridSize, false);
-    this.setTimeFormat(this.state.currentTimeFormat, false);
+
+    const normalizedLegacyTimeFormat = values.timeFormat === "minutes:seconds" ? DEFAULTS.timeFormat : (values.timeFormat || DEFAULTS.timeFormat);
+    const normalizedLegacyCountdownStyle = values.countdownStyle === "progressBar" ? "progressBar" : DEFAULTS.countdownStyle;
+    const countdownDisplayStyle = values.countdownDisplayStyle
+      || (normalizedLegacyCountdownStyle === "progressBar"
+        ? "progressBar"
+        : (normalizedLegacyTimeFormat === "seconds" ? "seconds" : "hms"));
+    await this.applyCountdownDisplayStyle(countdownDisplayStyle, false);
 
     elements.mainMenuStaticImagePathRow.style.display = this.state.mainMenuBackgroundChoice === "staticImage" ? "flex" : "none";
     this.setValueIfChanged(elements.mainMenuBackgroundPathDisplay, this.state.currentMainMenuBackgroundPath || t("defaultBackgroundImage"));
@@ -259,11 +274,11 @@ export class AppController {
     groups.previewBackgroundChoiceRadios.forEach((radio) => {
       radio.checked = radio.value === this.state.previewBackgroundChoice;
     });
-    groups.timeFormatRadios.forEach((radio) => {
-      radio.checked = radio.value === this.state.currentTimeFormat;
-    });
     groups.countdownVisibilityRadios.forEach((radio) => {
       radio.checked = (radio.value === "hide") === this.state.isCountdownHidden;
+    });
+    groups.countdownDisplayStyleRadios.forEach((radio) => {
+      radio.checked = radio.value === this.state.currentCountdownDisplayStyle;
     });
     groups.startupModeChoiceRadios.forEach((radio) => {
       radio.checked = radio.value === this.state.startupMode;
@@ -312,6 +327,33 @@ export class AppController {
 
   isPlaybackVisible() {
     return !elements.imageDisplayArea.classList.contains("hidden");
+  }
+
+  clearCountdownAdvanceTimeout() {
+    if (this.state.countdownAdvanceTimeout !== null) {
+      clearTimeout(this.state.countdownAdvanceTimeout);
+      this.state.countdownAdvanceTimeout = null;
+    }
+  }
+
+  clearLowTimeAlert() {
+    if (this.state.lowTimeAlertTimeout !== null) {
+      clearTimeout(this.state.lowTimeAlertTimeout);
+      this.state.lowTimeAlertTimeout = null;
+    }
+    elements.countdownElement.classList.remove("low-alert");
+    elements.countdownProgressTrack.classList.remove("low-alert");
+  }
+
+  triggerLowTimeAlert() {
+    this.clearLowTimeAlert();
+    elements.countdownElement.classList.add("low-alert");
+    elements.countdownProgressTrack.classList.add("low-alert");
+    this.state.lowTimeAlertTimeout = window.setTimeout(() => {
+      elements.countdownElement.classList.remove("low-alert");
+      elements.countdownProgressTrack.classList.remove("low-alert");
+      this.state.lowTimeAlertTimeout = null;
+    }, 1300);
   }
 
   normalizeGridCount(value) {
@@ -1247,6 +1289,10 @@ export class AppController {
   }
 
   async advanceImage(isStartingNewSession = false) {
+    this.clearCountdownAdvanceTimeout();
+    this.clearLowTimeAlert();
+    this.state.hasLowTimeAlertShown = false;
+
     if (this.state.currentSessionPlaybackQueue.length === 0) {
       this.stopGame();
       return;
@@ -1295,10 +1341,16 @@ export class AppController {
 
   finishPlayback() {
     clearInterval(this.state.countdownTimer);
+    this.clearCountdownAdvanceTimeout();
+    this.clearLowTimeAlert();
     this.state.isPlaying = false;
     this.state.isPaused = true;
+    this.state.remainingTime = 0;
     elements.pausePlayButton.textContent = "▶";
-    elements.countdownElement.textContent = "已经没有下一张";
+    if (this.state.currentCountdownStyle === "text") {
+      elements.countdownElement.textContent = "已经没有下一张";
+    }
+    this.updateCountdownDisplay();
     this.updateNavigationButtons();
     this.updateMarkingUI();
     this.refreshMainMenuEligibilityState();
@@ -1311,6 +1363,9 @@ export class AppController {
     }
 
     clearInterval(this.state.countdownTimer);
+    this.clearCountdownAdvanceTimeout();
+    this.clearLowTimeAlert();
+    this.state.hasLowTimeAlertShown = false;
     this.state.historyPointer -= 1;
     this.state.currentImageIndex = this.state.displayedImageHistory[this.state.historyPointer];
     this.state.remainingTime = this.state.displayTime;
@@ -1330,6 +1385,8 @@ export class AppController {
     elements.pausePlayButton.textContent = this.state.isPaused ? "▶" : "⏸";
     if (this.state.isPaused) {
       clearInterval(this.state.countdownTimer);
+      this.clearCountdownAdvanceTimeout();
+      this.clearLowTimeAlert();
     } else {
       this.startCountdown();
     }
@@ -1338,6 +1395,8 @@ export class AppController {
 
   startCountdown() {
     clearInterval(this.state.countdownTimer);
+    this.clearCountdownAdvanceTimeout();
+    this.clearLowTimeAlert();
     if (this.state.displayTime === Infinity || this.state.isPaused) {
       return;
     }
@@ -1352,32 +1411,92 @@ export class AppController {
       }
 
       clearInterval(this.state.countdownTimer);
-      const currentFile = this.state.imageFiles[this.state.currentImageIndex];
-      if (currentFile) {
-        await desktop.saveImageMark(currentFile.path, this.state.displayTime);
-        this.state.imageMarks = await desktop.getImageMarks();
+      const imageIndexAtZero = this.state.currentImageIndex;
+      const shouldWaitProgressFinish = !this.state.isCountdownHidden && this.state.currentCountdownStyle === "progressBar";
+      const finalizeAndAdvance = async () => {
+        if (!this.state.isPlaying || this.state.currentImageIndex !== imageIndexAtZero) {
+          return;
+        }
+        const currentFile = this.state.imageFiles[this.state.currentImageIndex];
+        if (currentFile) {
+          await desktop.saveImageMark(currentFile.path, this.state.displayTime);
+          this.state.imageMarks = await desktop.getImageMarks();
+        }
+        await this.advanceImage();
+      };
+
+      if (!shouldWaitProgressFinish) {
+        await finalizeAndAdvance();
+        return;
       }
-      await this.advanceImage();
+
+      this.state.countdownAdvanceTimeout = window.setTimeout(() => {
+        this.state.countdownAdvanceTimeout = null;
+        finalizeAndAdvance().catch((error) => {
+          console.error("Failed to advance after countdown progress completion:", error);
+        });
+      }, 1000);
     }, 1000);
   }
 
   updateCountdownDisplay() {
-    let nextText = "";
+    const canCountdown = !this.state.isCountdownHidden && this.state.displayTime !== Infinity;
+    const showProgressBar = canCountdown && this.state.currentCountdownStyle === "progressBar";
+    const showText = canCountdown && !showProgressBar;
 
-    if (this.state.isCountdownHidden || this.state.displayTime === Infinity) {
-      nextText = "";
-    } else if (this.state.currentTimeFormat === "hours:minutes:seconds" && this.state.remainingTime >= 60) {
-      const hours = Math.floor(this.state.remainingTime / 3600);
-      const minutes = Math.floor((this.state.remainingTime % 3600) / 60);
-      const seconds = this.state.remainingTime % 60;
-      nextText = `${hours > 0 ? `${String(hours).padStart(2, "0")}:` : ""}${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
-    } else {
-      nextText = `${this.state.remainingTime}`;
+    elements.countdownElement.style.display = showText ? "block" : "none";
+    elements.countdownProgressTrack.style.display = showProgressBar ? "block" : "none";
+
+    if (showText) {
+      let nextText = "";
+      if (this.state.currentTimeFormat === "hours:minutes:seconds" && this.state.remainingTime >= 60) {
+        const hours = Math.floor(this.state.remainingTime / 3600);
+        const minutes = Math.floor((this.state.remainingTime % 3600) / 60);
+        const seconds = this.state.remainingTime % 60;
+        nextText = `${hours > 0 ? `${String(hours).padStart(2, "0")}:` : ""}${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+      } else {
+        nextText = `${this.state.remainingTime}`;
+      }
+
+      if (elements.countdownElement.textContent !== nextText) {
+        elements.countdownElement.textContent = nextText;
+      }
+    } else if (elements.countdownElement.textContent) {
+      elements.countdownElement.textContent = "";
     }
 
-    if (elements.countdownElement.textContent !== nextText) {
-      elements.countdownElement.textContent = nextText;
+    if (!canCountdown) {
+      elements.countdownElement.classList.remove("low-time");
     }
+
+    const ratio = canCountdown
+      ? Math.max(0, Math.min(1, this.state.remainingTime / this.state.displayTime))
+      : 1;
+    elements.countdownElement.classList.toggle("low-time", showText && ratio <= 0.2);
+    if (canCountdown && ratio <= 0.2 && !this.state.hasLowTimeAlertShown) {
+      this.triggerLowTimeAlert();
+      this.state.hasLowTimeAlertShown = true;
+    } else if (!canCountdown || ratio > 0.2) {
+      this.state.hasLowTimeAlertShown = false;
+    }
+
+    if (!showProgressBar) {
+      elements.countdownProgressFill.style.width = "0%";
+      elements.countdownProgressFill.classList.remove("low-time");
+      return;
+    }
+
+    elements.countdownProgressFill.classList.toggle("low-time", ratio <= 0.2);
+    const isSessionStartOfImage = this.state.remainingTime === this.state.displayTime;
+    if (isSessionStartOfImage) {
+      elements.countdownProgressFill.classList.add("instant");
+      elements.countdownProgressFill.style.width = `${ratio * 100}%`;
+      void elements.countdownProgressFill.offsetWidth;
+      elements.countdownProgressFill.classList.remove("instant");
+      return;
+    }
+
+    elements.countdownProgressFill.style.width = `${ratio * 100}%`;
   }
 
   applyImageEffects() {
@@ -1428,7 +1547,7 @@ export class AppController {
     this.setDisabledIfChanged(elements.nextImageButton, !hasNextInQueue);
     this.setDisabledIfChanged(
       elements.pausePlayButton,
-      this.state.currentSessionPlaybackQueue.length === 0 || (!this.state.isPlaying && elements.countdownElement.textContent === "已经没有下一张"),
+      this.state.currentSessionPlaybackQueue.length === 0 || !this.state.isPlaying,
     );
   }
 
@@ -1553,6 +1672,8 @@ export class AppController {
 
   async stopGame() {
     clearInterval(this.state.countdownTimer);
+    this.clearCountdownAdvanceTimeout();
+    this.clearLowTimeAlert();
     this.state.isPlaying = false;
     this.state.isPaused = false;
     elements.pausePlayButton.textContent = "⏸";
@@ -1792,14 +1913,16 @@ export class AppController {
     this.setGridSize(DEFAULTS.gridSize);
   }
 
-  setTimeFormat(format, persist = true) {
-    if (this.state.currentTimeFormat === format) {
-      return;
-    }
-    this.state.currentTimeFormat = format;
+  async applyCountdownDisplayStyle(style, persist = true) {
+    const normalizedStyle = style === "seconds" || style === "progressBar" ? style : "hms";
+    this.state.currentCountdownDisplayStyle = normalizedStyle;
+    this.state.currentCountdownStyle = normalizedStyle === "progressBar" ? "progressBar" : "text";
+    this.state.currentTimeFormat = normalizedStyle === "seconds" ? "seconds" : "hours:minutes:seconds";
+
     if (persist) {
-      desktop.saveSetting("timeFormat", format);
+      await desktop.saveSetting("countdownDisplayStyle", normalizedStyle);
     }
+
     this.updateCountdownDisplay();
   }
 

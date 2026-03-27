@@ -19,6 +19,8 @@ export const elements = {
   imageDisplayArea: byId("image-display-area"),
   currentImage: byId("current-image"),
   countdownElement: byId("countdown"),
+  countdownProgressTrack: byId("countdown-progress-track"),
+  countdownProgressFill: byId("countdown-progress-fill"),
   gridCanvas: byId("grid-canvas"),
   rightControlsHoverZone: byId("right-controls-hover-zone"),
   overlayControls: byId("overlay-controls"),
@@ -75,8 +77,8 @@ export const elements = {
 export const groups = {
   mainMenuBackgroundChoiceRadios: document.querySelectorAll('input[name="mainMenuBackgroundChoice"]'),
   previewBackgroundChoiceRadios: document.querySelectorAll('input[name="previewBackgroundChoice"]'),
-  timeFormatRadios: document.querySelectorAll('input[name="timeFormat"]'),
   countdownVisibilityRadios: document.querySelectorAll('input[name="countdownVisibility"]'),
+  countdownDisplayStyleRadios: document.querySelectorAll('input[name="countdownDisplayStyle"]'),
   startupModeChoiceRadios: document.querySelectorAll('input[name="startupMode"]'),
   displayTimeDropdownOptions: document.querySelectorAll("#displayTimeDropdown .custom-dropdown-option"),
   imageCountDropdownOptions: document.querySelectorAll("#imageCountDropdown .custom-dropdown-option"),

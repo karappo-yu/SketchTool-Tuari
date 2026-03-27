@@ -93,6 +93,9 @@
             <img id="current-image" crossorigin="anonymous" src="" alt="当前速写图片">
             <canvas id="grid-canvas"></canvas>
             <div id="countdown"></div>
+            <div id="countdown-progress-track">
+                <div id="countdown-progress-fill"></div>
+            </div>
 
 
             <!-- 鼠标悬停区域 - 右侧 -->
@@ -276,21 +279,21 @@
                 <button id="resetGridSettingsButton" class="primary compact-btn" data-i18n="reset">重置</button> <!-- Combined reset for grid -->
             </div>
 
-            <!-- Row 4: 时间格式 -->
-            <div class="settings-row-compact">
-                <label data-i18n="timeFormat">时间格式:</label>
-                <div class="radio-group-inline">
-                    <label data-i18n="hoursMinutesSeconds"><input type="radio" name="timeFormat" value="hours:minutes:seconds" checked> 时:分:秒</label>
-                    <label data-i18n="secondsOnly"><input type="radio" name="timeFormat" value="seconds"> 只秒</label>
-                </div>
-            </div>
-
-            <!-- Row 5: 工具和新的倒计时显示开关 -->
+            <!-- Row 4: 工具和新的倒计时显示开关 -->
             <div class="settings-row-compact">
                 <label data-i18n="countdown">倒计时:</label>
                 <div class="radio-group-inline">
                     <label data-i18n="show"><input type="radio" name="countdownVisibility" value="show" checked> 显示</label>
                     <label data-i18n="hide"><input type="radio" name="countdownVisibility" value="hide"> 隐藏</label>
+                </div>
+            </div>
+
+            <div class="settings-row-compact">
+                <label data-i18n="countdownDisplayMode">倒计时样式:</label>
+                <div class="radio-group-inline">
+                    <label data-i18n="secondsOnly"><input type="radio" name="countdownDisplayStyle" value="seconds"> 只秒</label>
+                    <label data-i18n="hoursMinutesSeconds"><input type="radio" name="countdownDisplayStyle" value="hms" checked> 时:分:秒</label>
+                    <label data-i18n="countdownStyleBar"><input type="radio" name="countdownDisplayStyle" value="progressBar"> 进度条</label>
                 </div>
             </div>
 

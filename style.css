@@ -20,6 +20,10 @@
     --input-border: rgba(255, 255, 255, 0.2);
     --dropdown-bg: rgba(32, 36, 44, 0.72);
     --dropdown-hover-bg: rgba(255, 255, 255, 0.12);
+    --countdown-track-bg: rgba(255, 255, 255, 0.12);
+    --countdown-fill-bg: rgba(255, 255, 255, 0.32);
+    --countdown-fill-low-bg: rgba(255, 120, 120, 0.42);
+    --countdown-text-low-color: rgba(255, 150, 150, 0.95);
     --info-text-color: #a0a0a0;
     --default-preview-bg: #1a1a2e;
     --alert-bg: rgba(40, 44, 52, 0.9);
@@ -52,6 +56,10 @@ body.light-theme {
     --input-border: rgba(0, 0, 0, 0.15);
     --dropdown-bg: rgba(255, 255, 255, 0.72);
     --dropdown-hover-bg: rgba(0, 0, 0, 0.08);
+    --countdown-track-bg: rgba(0, 0, 0, 0.12);
+    --countdown-fill-bg: rgba(0, 0, 0, 0.28);
+    --countdown-fill-low-bg: rgba(230, 95, 95, 0.36);
+    --countdown-text-low-color: rgba(210, 80, 80, 0.95);
     --info-text-color: #666666;
     --default-preview-bg: #f8f9fa; /* Lighter preview background */
     --alert-bg: rgba(255, 255, 255, 0.95);
@@ -660,6 +668,55 @@ button[data-tooltip]:hover::before {
     background-color: transparent;
     border: none;
     padding: 0;
+}
+
+#countdown.low-time {
+    color: var(--countdown-text-low-color);
+}
+
+#countdown.low-alert {
+    animation: countdown-low-alert 0.28s ease-in-out 4;
+}
+
+#countdown-progress-track {
+    position: absolute;
+    left: 8px;
+    bottom: 14px;
+    transform: none;
+    width: calc(100% - 16px);
+    height: 4px;
+    border-radius: 999px;
+    background: var(--countdown-track-bg);
+    opacity: 0.75;
+    pointer-events: none;
+    z-index: 6;
+    display: none;
+}
+
+#countdown-progress-fill {
+    width: 0%;
+    height: 100%;
+    border-radius: inherit;
+    background: var(--countdown-fill-bg);
+    transition: width 1s linear;
+}
+
+#countdown-progress-fill.instant {
+    transition: none;
+}
+
+#countdown-progress-fill.low-time {
+    background: var(--countdown-fill-low-bg);
+}
+
+#countdown-progress-track.low-alert {
+    animation: countdown-low-alert 0.28s ease-in-out 4;
+}
+
+@keyframes countdown-low-alert {
+    0% { opacity: 1; }
+    50% { opacity: 0.45; }
+    100% { opacity: 1; }
 }
 
 #grid-canvas {
