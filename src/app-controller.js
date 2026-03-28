@@ -1598,37 +1598,51 @@ export class AppController {
     const left = rect.left - containerRect.left;
     const top = rect.top - containerRect.top;
     const dpr = window.devicePixelRatio || 1;
+    const targetCanvasWidth = Math.round(rect.width * dpr);
+    const targetCanvasHeight = Math.round(rect.height * dpr);
 
-    elements.gridCanvas.style.left = `${left}px`;
-    elements.gridCanvas.style.top = `${top}px`;
-    elements.gridCanvas.style.width = `${rect.width}px`;
-    elements.gridCanvas.style.height = `${rect.height}px`;
-    elements.gridCanvas.width = Math.round(rect.width * dpr);
-    elements.gridCanvas.height = Math.round(rect.height * dpr);
-
-    if (!this.state.isGridEnabled) {
-      this.lastGridRenderSignature = "";
-      this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      this.ctx.clearRect(0, 0, rect.width, rect.height);
-      return;
-    }
-
-    const gridStep = this.getAdaptiveGridStep(rect.width, rect.height);
     const renderSignature = [
       Math.round(rect.width),
       Math.round(rect.height),
       Math.round(left),
       Math.round(top),
-      gridStep.columns,
-      gridStep.rows,
       this.state.currentGridColorHex,
       dpr,
+      this.state.currentGridSize,
+      this.state.isGridEnabled,
     ].join(":");
 
     if (this.lastGridRenderSignature === renderSignature) {
       return;
     }
 
+    if (elements.gridCanvas.style.left !== `${left}px`) {
+      elements.gridCanvas.style.left = `${left}px`;
+    }
+    if (elements.gridCanvas.style.top !== `${top}px`) {
+      elements.gridCanvas.style.top = `${top}px`;
+    }
+    if (elements.gridCanvas.style.width !== `${rect.width}px`) {
+      elements.gridCanvas.style.width = `${rect.width}px`;
+    }
+    if (elements.gridCanvas.style.height !== `${rect.height}px`) {
+      elements.gridCanvas.style.height = `${rect.height}px`;
+    }
+    if (elements.gridCanvas.width !== targetCanvasWidth) {
+      elements.gridCanvas.width = targetCanvasWidth;
+    }
+    if (elements.gridCanvas.height !== targetCanvasHeight) {
+      elements.gridCanvas.height = targetCanvasHeight;
+    }
+
+    if (!this.state.isGridEnabled) {
+      this.lastGridRenderSignature = renderSignature;
+      this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      this.ctx.clearRect(0, 0, rect.width, rect.height);
+      return;
+    }
+
+    const gridStep = this.getAdaptiveGridStep(rect.width, rect.height);
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     this.ctx.clearRect(0, 0, rect.width, rect.height);
     this.ctx.lineWidth = 1;
