@@ -16,19 +16,11 @@ export class AppController {
   constructor() {
     this.ctx = elements.gridCanvas.getContext("2d");
     this.hiddenImageCtx = elements.hiddenImageCanvas.getContext("2d", { willReadFrequently: true });
-    this.eligibleImagesCache = {
-      imageFilesRef: null,
-      imageMarksRef: null,
-      isFilterMarkedEnabled: null,
-      value: [],
-    };
     this.gridRedrawFrame = null;
     this.lastGridRenderSignature = "";
     this.lastGridStepSignature = "";
     this.lastGridStep = null;
-    this.folderCompletionCache = new Map();
-    this.latestMarkCache = new Map();
-    this.cachedImageMarksRef = null;
+    this.thumbnailRenderVersion = 0;
     this.defaultPreviewBackgroundColor = "";
     this.averageColorCache = {
       src: "",
@@ -66,7 +58,7 @@ export class AppController {
       previewBackgroundChoice: "solidColor",
       mainMenuBackgroundChoice: "solidColor",
       startupMode: "lastUsedPath",
-      imageMarks: {},
+      latestMarksByPath: {},
       currentMainMenuBackgroundPath: "",
       currentPreviewBackgroundPath: "",
       currentGridColorHex: DEFAULTS.gridColor,
@@ -78,6 +70,7 @@ export class AppController {
       currentFolderItems: [],
       currentPage: 0,
       currentLanguage: "zh-CN",
+      eligibleImageRawIndexes: [],
       ...createEmptyHistory(),
     };
   }
@@ -222,7 +215,6 @@ export class AppController {
       "isLibraryFilterMarkedEnabled",
       "isAlwaysOnTop",
       "startupMode",
-      "imageMarks",
       "isLightThemeEnabled",
       "language",
     ];
@@ -244,7 +236,6 @@ export class AppController {
     this.state.isLibraryFilterMarkedEnabled = values.isLibraryFilterMarkedEnabled ?? DEFAULTS.isLibraryFilterMarkedEnabled;
     this.state.isAlwaysOnTop = values.isAlwaysOnTop ?? DEFAULTS.isAlwaysOnTop;
     this.state.startupMode = values.startupMode ?? DEFAULTS.startupMode;
-    this.state.imageMarks = values.imageMarks || DEFAULTS.imageMarks;
     this.state.currentLanguage = values.language || DEFAULTS.language;
 
     this.applyLanguage(this.state.currentLanguage);
@@ -836,6 +827,7 @@ export class AppController {
     const imageFiles = items.filter((item) => item.type === "file").sort(naturalSort);
     this.state.imageFiles = imageFiles.map((file) => ({ name: file.name, path: file.originalPath }));
     this.state.imageUrls = imageFiles.map((file) => file.path);
+    await this.recalculateEligibilityFromBackend();
     this.setTextContentIfChanged(elements.sketchFolderInputDisplay, folderPath || "点击选择速写文件夹...");
   }
 
@@ -864,6 +856,7 @@ export class AppController {
         console.error(error);
         this.state.imageFiles = [];
         this.state.imageUrls = [];
+        this.state.eligibleImageRawIndexes = [];
         this.state.mainMenuSelectedFolderPath = "";
         this.setTextContentIfChanged(elements.sketchFolderInputDisplay, "无法加载，请重新选择...");
         this.showAlert("无法加载当前文件夹。请重新选择。", "错误");
@@ -871,6 +864,7 @@ export class AppController {
     } else {
       this.state.imageFiles = [];
       this.state.imageUrls = [];
+      this.state.eligibleImageRawIndexes = [];
       this.setTextContentIfChanged(elements.sketchFolderInputDisplay, "点击选择速写文件夹...");
     }
 
@@ -883,70 +877,29 @@ export class AppController {
     await this.setTrafficLightVisibility(true);
   }
 
-  async isFolderCompleted(folderPath) {
-    this.syncMarkCaches();
-
-    const cached = this.folderCompletionCache.get(folderPath);
-    if (cached && cached.imageMarksRef === this.state.imageMarks) {
-      return cached.value;
+  async recalculateEligibilityFromBackend() {
+    if (!Array.isArray(this.state.imageFiles) || this.state.imageFiles.length === 0) {
+      this.state.eligibleImageRawIndexes = [];
+      this.refreshMainMenuEligibilityState();
+      return;
     }
 
-    const items = await desktop.readFolderImages(folderPath);
-    const directImages = items.filter((item) => item.type === "file");
-    if (directImages.length === 0) {
-      this.folderCompletionCache.set(folderPath, {
-        imageMarksRef: this.state.imageMarks,
-        value: false,
-      });
-      return false;
+    try {
+      const result = await desktop.buildPlaybackPlan(
+        this.state.imageFiles.map((file) => file.path),
+        this.state.isFilterMarkedEnabled,
+        false,
+        null,
+      );
+      this.state.eligibleImageRawIndexes = Array.isArray(result?.eligibleIndexes)
+        ? result.eligibleIndexes
+        : [];
+    } catch (error) {
+      console.error("Failed to recalculate eligible images via Rust backend:", error);
+      this.state.eligibleImageRawIndexes = [];
     }
 
-    const isCompleted = directImages.every((image) => {
-      const marks = this.state.imageMarks[image.originalPath];
-      return Array.isArray(marks) && marks.length > 0;
-    });
-
-    this.folderCompletionCache.set(folderPath, {
-      imageMarksRef: this.state.imageMarks,
-      value: isCompleted,
-    });
-
-    return isCompleted;
-  }
-
-  async getFolderCompletionStates(items) {
-    const directories = items.filter((item) => item.type === "directory");
-    if (directories.length === 0) {
-      return new Map();
-    }
-
-    const completionEntries = await Promise.all(
-      directories.map(async (directory) => [directory.path, await this.isFolderCompleted(directory.path)]),
-    );
-    return new Map(completionEntries);
-  }
-
-  getLatestMark(marks) {
-    this.syncMarkCaches();
-
-    if (!Array.isArray(marks) || marks.length === 0) {
-      return null;
-    }
-
-    const cached = this.latestMarkCache.get(marks);
-    if (cached) {
-      return cached;
-    }
-
-    let latestMark = marks[0];
-    for (let index = 1; index < marks.length; index += 1) {
-      if (marks[index].timestamp > latestMark.timestamp) {
-        latestMark = marks[index];
-      }
-    }
-
-    this.latestMarkCache.set(marks, latestMark);
-    return latestMark;
+    this.refreshMainMenuEligibilityState();
   }
 
   createThumbnailMarkInfo(item, latestMark) {
@@ -960,24 +913,37 @@ export class AppController {
     return info;
   }
 
-  syncMarkCaches() {
-    if (this.cachedImageMarksRef === this.state.imageMarks) {
+  mergeLatestMarks(latestMarks) {
+    if (!latestMarks || typeof latestMarks !== "object") {
       return;
     }
+    this.state.latestMarksByPath = {
+      ...this.state.latestMarksByPath,
+      ...latestMarks,
+    };
+  }
 
-    this.cachedImageMarksRef = this.state.imageMarks;
-    this.folderCompletionCache.clear();
-    this.latestMarkCache.clear();
+  cacheLatestMarksForPaths(paths, latestMarks) {
+    if (!Array.isArray(paths) || paths.length === 0) {
+      return;
+    }
+    const next = { ...this.state.latestMarksByPath };
+    for (const path of paths) {
+      next[path] = latestMarks?.[path] ?? null;
+    }
+    this.state.latestMarksByPath = next;
   }
 
   async renderCurrentPageThumbnails() {
+    const renderVersion = ++this.thumbnailRenderVersion;
     elements.thumbnailsGridContainer.innerHTML = "";
     elements.folderBrowserInfoMessage.classList.add("hidden");
     const fragment = document.createDocumentFragment();
 
     const startIndex = this.state.currentPage * ITEMS_PER_PAGE;
     const itemsToDisplay = this.state.currentFolderItems.slice(startIndex, startIndex + ITEMS_PER_PAGE);
-    const folderCompletionStates = await this.getFolderCompletionStates(itemsToDisplay);
+    const directoryThumbnailByPath = new Map();
+    const fileThumbnailByPath = new Map();
 
     if (this.state.currentFolderItems.length === 0) {
       this.setTextContentIfChanged(elements.folderBrowserInfoMessage, "当前文件夹为空。");
@@ -994,13 +960,7 @@ export class AppController {
           <div class="thumbnail-label">${item.name}</div>
         `;
         thumbnailItem.addEventListener("click", () => this.showFolderBrowserView(item.path));
-
-        if (folderCompletionStates.get(item.path)) {
-          const completedInfo = document.createElement("div");
-          completedInfo.classList.add("thumbnail-folder-completed-info");
-          completedInfo.textContent = "已完成";
-          thumbnailItem.appendChild(completedInfo);
-        }
+        directoryThumbnailByPath.set(item.path, thumbnailItem);
       } else {
         const img = document.createElement("img");
         img.src = item.path;
@@ -1015,20 +975,7 @@ export class AppController {
         thumbnailItem.appendChild(img);
         thumbnailItem.appendChild(label);
 
-        const marks = this.state.imageMarks[item.originalPath];
-        if (Array.isArray(marks) && marks.length > 0) {
-          const latestMark = this.getLatestMark(marks);
-          const info = this.createThumbnailMarkInfo(item, latestMark);
-          thumbnailItem.appendChild(info);
-
-          info.querySelector(".delete-mark-button").addEventListener("click", async (event) => {
-            event.stopPropagation();
-            await desktop.clearImageMarksForPath(event.target.dataset.path);
-            this.state.imageMarks = await desktop.getImageMarks();
-            info.remove();
-            this.refreshMainMenuEligibilityState();
-          });
-        }
+        fileThumbnailByPath.set(item.originalPath, { item, thumbnailItem });
 
         thumbnailItem.addEventListener("dblclick", async () => {
           const result = await desktop.openFileInDefaultApp(item.originalPath);
@@ -1050,6 +997,54 @@ export class AppController {
       elements.nextPageButton,
       this.state.currentPage >= totalPages - 1 || this.state.currentFolderItems.length === 0,
     );
+
+    if (directoryThumbnailByPath.size === 0 && fileThumbnailByPath.size === 0) {
+      return;
+    }
+
+    const directoryPaths = [...directoryThumbnailByPath.keys()];
+    const filePaths = [...fileThumbnailByPath.keys()];
+    const [folderCompletionStates, latestMarks] = await Promise.all([
+      directoryPaths.length > 0 ? desktop.getFolderCompletionStates(directoryPaths) : Promise.resolve({}),
+      filePaths.length > 0 ? desktop.getLatestMarksForPaths(filePaths) : Promise.resolve({}),
+    ]);
+    this.cacheLatestMarksForPaths(filePaths, latestMarks);
+
+    if (renderVersion !== this.thumbnailRenderVersion) {
+      return;
+    }
+
+    for (const [folderPath, thumbnailItem] of directoryThumbnailByPath.entries()) {
+      if (!folderCompletionStates.get(folderPath)) {
+        continue;
+      }
+      if (thumbnailItem.querySelector(".thumbnail-folder-completed-info")) {
+        continue;
+      }
+      const completedInfo = document.createElement("div");
+      completedInfo.classList.add("thumbnail-folder-completed-info");
+      completedInfo.textContent = "已完成";
+      thumbnailItem.appendChild(completedInfo);
+    }
+
+    for (const [filePath, { item, thumbnailItem }] of fileThumbnailByPath.entries()) {
+      const latestMark = latestMarks[filePath];
+      if (!latestMark) {
+        continue;
+      }
+
+      const info = this.createThumbnailMarkInfo(item, latestMark);
+      thumbnailItem.appendChild(info);
+      info.querySelector(".delete-mark-button").addEventListener("click", async (event) => {
+        event.stopPropagation();
+        const path = event.target.dataset.path;
+        await desktop.clearImageMarksForPath(path);
+        this.cacheLatestMarksForPaths([path], {});
+        await this.recalculateEligibilityFromBackend();
+        info.remove();
+        this.updateMarkingUI();
+      });
+    }
   }
 
   async showFolderBrowserView(folderPath) {
@@ -1084,12 +1079,14 @@ export class AppController {
       const items = await desktop.readFolderImages(folderPath);
       const directories = items.filter((item) => item.type === "directory");
       let files = items.filter((item) => item.type === "file");
+      const filePaths = files.map((file) => file.originalPath);
+      const latestMarks = filePaths.length > 0
+        ? await desktop.getLatestMarksForPaths(filePaths)
+        : {};
+      this.cacheLatestMarksForPaths(filePaths, latestMarks);
 
       if (this.state.isLibraryFilterMarkedEnabled) {
-        files = files.filter((file) => {
-          const marks = this.state.imageMarks[file.originalPath];
-          return !Array.isArray(marks) || marks.length === 0;
-        });
+        files = files.filter((file) => !latestMarks[file.originalPath]);
       }
 
       this.state.currentFolderItems = [...directories, ...files].sort((a, b) => {
@@ -1129,30 +1126,7 @@ export class AppController {
   }
 
   getEligibleImageRawIndexes() {
-    if (
-      this.eligibleImagesCache.imageFilesRef === this.state.imageFiles
-      && this.eligibleImagesCache.imageMarksRef === this.state.imageMarks
-      && this.eligibleImagesCache.isFilterMarkedEnabled === this.state.isFilterMarkedEnabled
-    ) {
-      return this.eligibleImagesCache.value;
-    }
-
-    const eligibleIndexes = this.state.imageFiles
-      .map((file, index) => ({ file, index }))
-      .filter(({ file }) => {
-        const marks = this.state.imageMarks[file.path];
-        return !(this.state.isFilterMarkedEnabled && Array.isArray(marks) && marks.length > 0);
-      })
-      .map(({ index }) => index);
-
-    this.eligibleImagesCache = {
-      imageFilesRef: this.state.imageFiles,
-      imageMarksRef: this.state.imageMarks,
-      isFilterMarkedEnabled: this.state.isFilterMarkedEnabled,
-      value: eligibleIndexes,
-    };
-
-    return eligibleIndexes;
+    return this.state.eligibleImageRawIndexes;
   }
 
   getEligibleImageCount() {
@@ -1234,7 +1208,7 @@ export class AppController {
     this.setTextContentIfChanged(elements.mainMenuHintText, `${t("estimatedTime")}${targetCount}${t("estimated")}${estimated}`);
   }
 
-  initiateSketchSession() {
+  async initiateSketchSession() {
     if (elements.startButton.disabled) {
       return;
     }
@@ -1254,9 +1228,27 @@ export class AppController {
       return;
     }
 
-    const queue = this.state.isRandomPlayback ? shuffleArray(eligibleIndexes) : [...eligibleIndexes];
-    const targetCount = this.getTargetSketchCount(eligibleIndexes.length);
-    this.state.currentSessionPlaybackQueue = queue.slice(0, targetCount);
+    const imageCount = Number.isFinite(this.state.imageCount) ? this.state.imageCount : null;
+    try {
+      const result = await desktop.buildPlaybackPlan(
+        this.state.imageFiles.map((file) => file.path),
+        this.state.isFilterMarkedEnabled,
+        this.state.isRandomPlayback,
+        imageCount,
+      );
+
+      this.state.eligibleImageRawIndexes = Array.isArray(result?.eligibleIndexes)
+        ? result.eligibleIndexes
+        : eligibleIndexes;
+      this.state.currentSessionPlaybackQueue = Array.isArray(result?.playbackQueue)
+        ? result.playbackQueue
+        : [];
+    } catch (error) {
+      console.error("Failed to build playback queue via Rust backend:", error);
+      const queue = this.state.isRandomPlayback ? shuffleArray(eligibleIndexes) : [...eligibleIndexes];
+      const targetCount = this.getTargetSketchCount(eligibleIndexes.length);
+      this.state.currentSessionPlaybackQueue = queue.slice(0, targetCount);
+    }
 
     if (this.state.currentSessionPlaybackQueue.length === 0) {
       return;
@@ -1420,7 +1412,9 @@ export class AppController {
         const currentFile = this.state.imageFiles[this.state.currentImageIndex];
         if (currentFile) {
           await desktop.saveImageMark(currentFile.path, this.state.displayTime);
-          this.state.imageMarks = await desktop.getImageMarks();
+          const latestMark = await desktop.getLatestMarksForPaths([currentFile.path]);
+          this.cacheLatestMarksForPaths([currentFile.path], latestMark);
+          await this.recalculateEligibilityFromBackend();
         }
         await this.advanceImage();
       };
@@ -1788,6 +1782,7 @@ export class AppController {
     this.state.isFilterMarkedEnabled = !this.state.isFilterMarkedEnabled;
     elements.filterMarkedToggle.classList.toggle("active", this.state.isFilterMarkedEnabled);
     await desktop.saveSetting("isFilterMarkedEnabled", this.state.isFilterMarkedEnabled);
+    await this.recalculateEligibilityFromBackend();
 
     if (this.isPlaybackVisible()) {
       await this.stopGame();
@@ -1982,16 +1977,18 @@ export class AppController {
       return;
     }
 
-    const marks = this.state.imageMarks[file.path];
-    if (Array.isArray(marks) && marks.length > 0) {
+    const latestMarkMap = await desktop.getLatestMarksForPaths([file.path]);
+    if (latestMarkMap[file.path]) {
       await desktop.clearImageMarksForPath(file.path);
+      this.cacheLatestMarksForPaths([file.path], {});
     } else {
       await desktop.saveImageMark(file.path, this.state.displayTime === Infinity ? 0 : this.state.displayTime);
+      const refreshedLatest = await desktop.getLatestMarksForPaths([file.path]);
+      this.cacheLatestMarksForPaths([file.path], refreshedLatest);
     }
 
-    this.state.imageMarks = await desktop.getImageMarks();
     this.updateMarkingUI();
-    this.refreshMainMenuEligibilityState();
+    await this.recalculateEligibilityFromBackend();
 
     if (!elements.folderBrowserView.classList.contains("hidden")) {
       await this.showFolderBrowserView(this.state.currentLoadedFolderPath);
@@ -2006,14 +2003,27 @@ export class AppController {
       return;
     }
 
-    const marks = this.state.imageMarks[file.path];
-    if (!Array.isArray(marks) || marks.length === 0) {
+    if (!(file.path in this.state.latestMarksByPath)) {
+      desktop.getLatestMarksForPaths([file.path]).then((latestMarkMap) => {
+        this.cacheLatestMarksForPaths([file.path], latestMarkMap);
+        const currentFile = this.state.imageFiles[this.state.currentImageIndex];
+        if (currentFile?.path === file.path) {
+          this.updateMarkingUI();
+        }
+      }).catch((error) => {
+        console.error("Failed to load latest mark for current image:", error);
+      });
       elements.markStarButton.classList.remove("active");
       elements.markStarButton.setAttribute("data-tooltip", t("unmarked"));
       return;
     }
 
-    const latestMark = this.getLatestMark(marks);
+    const latestMark = this.state.latestMarksByPath[file.path];
+    if (!latestMark) {
+      elements.markStarButton.classList.remove("active");
+      elements.markStarButton.setAttribute("data-tooltip", t("unmarked"));
+      return;
+    }
     const date = new Date(latestMark.timestamp);
     const month = `${date.getMonth() + 1}`.padStart(2, "0");
     const day = `${date.getDate()}`.padStart(2, "0");

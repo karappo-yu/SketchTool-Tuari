@@ -1,11 +1,14 @@
 use std::{
     fs,
+    collections::HashMap,
     path::{Path, PathBuf},
     process::Command,
     sync::Mutex,
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
+use rand::seq::SliceRandom;
+use rand::thread_rng;
 use rfd::FileDialog;
 use serde::Serialize;
 use serde_json::{json, Map, Value};
@@ -69,6 +72,21 @@ impl FolderItem {
             item_type: "file".into(),
         }
     }
+}
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct MarkEntry {
+    duration: i64,
+    timestamp: i64,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PlaybackPlanResponse {
+    eligible_indexes: Vec<usize>,
+    playback_queue: Vec<usize>,
+    target_count: usize,
 }
 
 fn default_settings() -> Map<String, Value> {
@@ -233,8 +251,8 @@ fn save_image_mark_to_store(state: &AppState, file_path: &str, duration: i64) ->
             .ok_or_else(|| "mark entry is corrupted".to_string())?;
         array.push(json!({
             "duration": duration,
-            "timestamp": std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
+            "timestamp": SystemTime::now()
+                .duration_since(UNIX_EPOCH)
                 .map_err(|error| error.to_string())?
                 .as_millis() as i64
         }));
@@ -264,6 +282,48 @@ fn get_image_marks_from_store(state: &AppState) -> Result<Value, String> {
         .get("imageMarks")
         .cloned()
         .unwrap_or_else(|| Value::Object(Map::new())))
+}
+
+fn has_any_mark(marks: &Map<String, Value>, file_path: &str) -> bool {
+    marks
+        .get(file_path)
+        .and_then(Value::as_array)
+        .map(|list| !list.is_empty())
+        .unwrap_or(false)
+}
+
+fn to_mark_entry(value: &Value) -> Option<MarkEntry> {
+    let object = value.as_object()?;
+    let duration = object.get("duration")?.as_i64()?;
+    let timestamp = object.get("timestamp")?.as_i64()?;
+    Some(MarkEntry { duration, timestamp })
+}
+
+fn latest_mark_for_path(marks: &Map<String, Value>, file_path: &str) -> Option<MarkEntry> {
+    let list = marks.get(file_path)?.as_array()?;
+    let mut latest: Option<MarkEntry> = None;
+
+    for item in list {
+        let Some(entry) = to_mark_entry(item) else {
+            continue;
+        };
+
+        match &latest {
+            Some(existing) if entry.timestamp <= existing.timestamp => {}
+            _ => latest = Some(entry),
+        }
+    }
+
+    latest
+}
+
+fn is_supported_image(path: &Path) -> bool {
+    let extension = path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .unwrap_or_default()
+        .to_lowercase();
+    image_extensions().contains(&extension.as_str())
 }
 
 #[tauri::command]
@@ -364,6 +424,128 @@ fn read_folder_images(folder_path: String) -> Vec<FolderItem> {
     }
 
     items
+}
+
+#[tauri::command]
+fn get_folder_completion_states(
+    folder_paths: Vec<String>,
+    state: tauri::State<'_, AppState>,
+) -> Result<HashMap<String, bool>, String> {
+    let store = state.store.lock().map_err(|_| "failed to lock settings store".to_string())?;
+    let marks = store
+        .data
+        .get("imageMarks")
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default();
+    drop(store);
+
+    let mut result = HashMap::new();
+    for folder_path in folder_paths {
+        let Ok(directory) = fs::read_dir(&folder_path) else {
+            result.insert(folder_path, false);
+            continue;
+        };
+
+        let mut direct_image_paths = Vec::new();
+        for entry in directory {
+            let Ok(entry) = entry else {
+                continue;
+            };
+            let Ok(file_type) = entry.file_type() else {
+                continue;
+            };
+            if !file_type.is_file() {
+                continue;
+            }
+
+            let path = entry.path();
+            if is_supported_image(&path) {
+                direct_image_paths.push(path.display().to_string());
+            }
+        }
+
+        if direct_image_paths.is_empty() {
+            result.insert(folder_path, false);
+            continue;
+        }
+
+        let is_completed = direct_image_paths
+            .iter()
+            .all(|image_path| has_any_mark(&marks, image_path));
+        result.insert(folder_path, is_completed);
+    }
+
+    Ok(result)
+}
+
+#[tauri::command]
+fn get_latest_marks_for_paths(
+    file_paths: Vec<String>,
+    state: tauri::State<'_, AppState>,
+) -> Result<HashMap<String, MarkEntry>, String> {
+    let store = state.store.lock().map_err(|_| "failed to lock settings store".to_string())?;
+    let marks = store
+        .data
+        .get("imageMarks")
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default();
+    drop(store);
+
+    let mut latest_marks = HashMap::new();
+    for file_path in file_paths {
+        if let Some(latest) = latest_mark_for_path(&marks, &file_path) {
+            latest_marks.insert(file_path, latest);
+        }
+    }
+
+    Ok(latest_marks)
+}
+
+#[tauri::command]
+fn build_playback_plan(
+    image_paths: Vec<String>,
+    filter_marked: bool,
+    is_random: bool,
+    image_count: Option<usize>,
+    state: tauri::State<'_, AppState>,
+) -> Result<PlaybackPlanResponse, String> {
+    let store = state.store.lock().map_err(|_| "failed to lock settings store".to_string())?;
+    let marks = store
+        .data
+        .get("imageMarks")
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default();
+    drop(store);
+
+    let eligible_indexes = image_paths
+        .iter()
+        .enumerate()
+        .filter_map(|(index, path)| {
+            if filter_marked && has_any_mark(&marks, path) {
+                return None;
+            }
+            Some(index)
+        })
+        .collect::<Vec<_>>();
+
+    let mut playback_queue = eligible_indexes.clone();
+    if is_random {
+        playback_queue.shuffle(&mut thread_rng());
+    }
+
+    let target_count = image_count
+        .map(|count| count.min(playback_queue.len()))
+        .unwrap_or(playback_queue.len());
+    playback_queue.truncate(target_count);
+
+    Ok(PlaybackPlanResponse {
+        eligible_indexes,
+        playback_queue,
+        target_count,
+    })
 }
 
 #[tauri::command]
@@ -597,6 +779,9 @@ pub fn run() {
             open_file_dialog,
             open_folder_dialog,
             read_folder_images,
+            get_folder_completion_states,
+            get_latest_marks_for_paths,
+            build_playback_plan,
             is_directory,
             open_file_in_finder,
             open_file_in_default_app,

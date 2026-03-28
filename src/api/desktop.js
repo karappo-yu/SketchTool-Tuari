@@ -38,6 +38,23 @@ export const desktop = {
     );
   },
 
+  async getFolderCompletionStates(folderPaths) {
+    return command("get_folder_completion_states", { folderPaths });
+  },
+
+  async getLatestMarksForPaths(filePaths) {
+    return command("get_latest_marks_for_paths", { filePaths });
+  },
+
+  async buildPlaybackPlan(imagePaths, filterMarked, isRandom, imageCount = null) {
+    return command("build_playback_plan", {
+      imagePaths,
+      filterMarked,
+      isRandom,
+      imageCount,
+    });
+  },
+
   async isDirectory(path) {
     return command("is_directory", { path });
   },

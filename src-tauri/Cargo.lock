@@ -592,6 +592,7 @@ version = "2.0.0"
 dependencies = [
  "objc2-app-kit",
  "opener",
+ "rand 0.8.5",
  "rfd",
  "serde",
  "serde_json",
