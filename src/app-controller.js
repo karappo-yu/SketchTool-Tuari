@@ -1204,7 +1204,7 @@ export class AppController {
       return;
     }
 
-    const estimated = formatTimeForHint(targetCount * this.state.displayTime);
+    const estimated = formatTimeForHint(targetCount * this.state.displayTime, this.state.currentLanguage);
     this.setTextContentIfChanged(elements.mainMenuHintText, `${t("estimatedTime")}${targetCount}${t("estimated")}${estimated}`);
   }
 

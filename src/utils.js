@@ -50,8 +50,14 @@ export function getParentPath(currentPath) {
   return parent;
 }
 
-export function formatTimeForHint(totalSeconds) {
+export function formatTimeForHint(totalSeconds, lang = "zh-CN") {
   if (totalSeconds === Infinity) {
+    if (lang === "en") {
+      return "Unlimited";
+    }
+    if (lang === "ja") {
+      return "無制限";
+    }
     return "无限制时间";
   }
 
@@ -63,6 +69,32 @@ export function formatTimeForHint(totalSeconds) {
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
   const parts = [];
+
+  if (lang === "en") {
+    if (hours > 0) {
+      parts.push(`${hours}h`);
+    }
+    if (minutes > 0) {
+      parts.push(`${minutes}m`);
+    }
+    if (seconds > 0) {
+      parts.push(`${seconds}s`);
+    }
+    return parts.length > 0 ? parts.join(" ") : `${totalSeconds}s`;
+  }
+
+  if (lang === "ja") {
+    if (hours > 0) {
+      parts.push(`${hours}時間`);
+    }
+    if (minutes > 0) {
+      parts.push(`${minutes}分`);
+    }
+    if (seconds > 0) {
+      parts.push(`${seconds}秒`);
+    }
+    return parts.length > 0 ? parts.join("") : `${totalSeconds}秒`;
+  }
 
   if (hours > 0) {
     parts.push(`${hours}小时`);
