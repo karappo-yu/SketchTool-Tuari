@@ -9,7 +9,7 @@ import {
 } from "./constants.js";
 import { elements, groups } from "./dom.js";
 import { desktop, toFileUrl } from "./api/desktop.js";
-import { createEmptyHistory, formatTimeForHint, getParentPath, hexToRgba, naturalSort, shuffleArray } from "./utils.js";
+import { formatTimeForHint, hexToRgba } from "./utils.js";
 import { setLanguage, t, getLanguage, SUPPORTED_LANGUAGES, updatePageI18n } from "./i18n.js";
 
 export class AppController {
@@ -20,7 +20,6 @@ export class AppController {
     this.lastGridRenderSignature = "";
     this.lastGridStepSignature = "";
     this.lastGridStep = null;
-    this.thumbnailRenderVersion = 0;
     this.defaultPreviewBackgroundColor = "";
     this.averageColorCache = {
       src: "",
@@ -43,6 +42,8 @@ export class AppController {
       remainingTime: 60,
       isPlaying: false,
       isPaused: false,
+      sessionHasPrev: false,
+      sessionHasNext: false,
       currentDefaultImageFolderPath: "",
       currentLoadedFolderPath: "",
       mainMenuSelectedFolderPath: "",
@@ -71,7 +72,6 @@ export class AppController {
       currentPage: 0,
       currentLanguage: "zh-CN",
       eligibleImageRawIndexes: [],
-      ...createEmptyHistory(),
     };
   }
 
@@ -823,11 +823,16 @@ export class AppController {
   }
 
   async loadImagesForSketchFolder(folderPath) {
-    const items = await desktop.readFolderImages(folderPath);
-    const imageFiles = items.filter((item) => item.type === "file").sort(naturalSort);
+    const data = await desktop.loadSketchFolderData(folderPath, this.state.isFilterMarkedEnabled);
+    const imageFiles = Array.isArray(data?.files) ? data.files : [];
     this.state.imageFiles = imageFiles.map((file) => ({ name: file.name, path: file.originalPath }));
     this.state.imageUrls = imageFiles.map((file) => file.path);
-    await this.recalculateEligibilityFromBackend();
+    this.state.eligibleImageRawIndexes = Array.isArray(data?.eligibleIndexes) ? data.eligibleIndexes : [];
+    this.cacheLatestMarksForPaths(
+      imageFiles.map((file) => file.originalPath),
+      data?.latestMarks || {},
+    );
+    this.refreshMainMenuEligibilityState();
     this.setTextContentIfChanged(elements.sketchFolderInputDisplay, folderPath || "点击选择速写文件夹...");
   }
 
@@ -913,16 +918,6 @@ export class AppController {
     return info;
   }
 
-  mergeLatestMarks(latestMarks) {
-    if (!latestMarks || typeof latestMarks !== "object") {
-      return;
-    }
-    this.state.latestMarksByPath = {
-      ...this.state.latestMarksByPath,
-      ...latestMarks,
-    };
-  }
-
   cacheLatestMarksForPaths(paths, latestMarks) {
     if (!Array.isArray(paths) || paths.length === 0) {
       return;
@@ -935,14 +930,12 @@ export class AppController {
   }
 
   async renderCurrentPageThumbnails() {
-    const renderVersion = ++this.thumbnailRenderVersion;
     elements.thumbnailsGridContainer.innerHTML = "";
     elements.folderBrowserInfoMessage.classList.add("hidden");
     const fragment = document.createDocumentFragment();
 
     const startIndex = this.state.currentPage * ITEMS_PER_PAGE;
     const itemsToDisplay = this.state.currentFolderItems.slice(startIndex, startIndex + ITEMS_PER_PAGE);
-    const directoryThumbnailByPath = new Map();
     const fileThumbnailByPath = new Map();
 
     if (this.state.currentFolderItems.length === 0) {
@@ -960,7 +953,12 @@ export class AppController {
           <div class="thumbnail-label">${item.name}</div>
         `;
         thumbnailItem.addEventListener("click", () => this.showFolderBrowserView(item.path));
-        directoryThumbnailByPath.set(item.path, thumbnailItem);
+        if (item.isCompleted) {
+          const completedInfo = document.createElement("div");
+          completedInfo.classList.add("thumbnail-folder-completed-info");
+          completedInfo.textContent = "已完成";
+          thumbnailItem.appendChild(completedInfo);
+        }
       } else {
         const img = document.createElement("img");
         img.src = item.path;
@@ -998,52 +996,32 @@ export class AppController {
       this.state.currentPage >= totalPages - 1 || this.state.currentFolderItems.length === 0,
     );
 
-    if (directoryThumbnailByPath.size === 0 && fileThumbnailByPath.size === 0) {
+    if (fileThumbnailByPath.size === 0) {
       return;
-    }
-
-    const directoryPaths = [...directoryThumbnailByPath.keys()];
-    const filePaths = [...fileThumbnailByPath.keys()];
-    const [folderCompletionStates, latestMarks] = await Promise.all([
-      directoryPaths.length > 0 ? desktop.getFolderCompletionStates(directoryPaths) : Promise.resolve({}),
-      filePaths.length > 0 ? desktop.getLatestMarksForPaths(filePaths) : Promise.resolve({}),
-    ]);
-    this.cacheLatestMarksForPaths(filePaths, latestMarks);
-
-    if (renderVersion !== this.thumbnailRenderVersion) {
-      return;
-    }
-
-    for (const [folderPath, thumbnailItem] of directoryThumbnailByPath.entries()) {
-      if (!folderCompletionStates.get(folderPath)) {
-        continue;
-      }
-      if (thumbnailItem.querySelector(".thumbnail-folder-completed-info")) {
-        continue;
-      }
-      const completedInfo = document.createElement("div");
-      completedInfo.classList.add("thumbnail-folder-completed-info");
-      completedInfo.textContent = "已完成";
-      thumbnailItem.appendChild(completedInfo);
     }
 
     for (const [filePath, { item, thumbnailItem }] of fileThumbnailByPath.entries()) {
-      const latestMark = latestMarks[filePath];
+      const latestMark = item.latestMark ?? null;
+      this.cacheLatestMarksForPaths([filePath], latestMark ? { [filePath]: latestMark } : {});
       if (!latestMark) {
         continue;
       }
 
       const info = this.createThumbnailMarkInfo(item, latestMark);
       thumbnailItem.appendChild(info);
-      info.querySelector(".delete-mark-button").addEventListener("click", async (event) => {
-        event.stopPropagation();
-        const path = event.target.dataset.path;
-        await desktop.clearImageMarksForPath(path);
-        this.cacheLatestMarksForPaths([path], {});
-        await this.recalculateEligibilityFromBackend();
-        info.remove();
-        this.updateMarkingUI();
-      });
+        info.querySelector(".delete-mark-button").addEventListener("click", async (event) => {
+          event.stopPropagation();
+          const path = event.target.dataset.path;
+          await desktop.clearImageMarksForPath(path);
+          this.cacheLatestMarksForPaths([path], {});
+          await this.recalculateEligibilityFromBackend();
+          const currentItem = this.state.currentFolderItems.find((entry) => entry.originalPath === path);
+          if (currentItem) {
+            currentItem.latestMark = null;
+          }
+          info.remove();
+          this.updateMarkingUI();
+        });
     }
   }
 
@@ -1072,34 +1050,16 @@ export class AppController {
     this.updateMainMenuBackground();
     this.state.currentFolderItems = [];
     elements.selectFolderForSketchAndReturnToMenuButton.disabled = true;
-    elements.goUpFolderButton.classList.toggle("hidden", !getParentPath(folderPath));
+    const parentPath = await desktop.getParentPath(folderPath);
+    elements.goUpFolderButton.classList.toggle("hidden", !parentPath);
     elements.libraryFilterMarkedToggle.classList.toggle("active", this.state.isLibraryFilterMarkedEnabled);
 
     try {
-      const items = await desktop.readFolderImages(folderPath);
-      const directories = items.filter((item) => item.type === "directory");
-      let files = items.filter((item) => item.type === "file");
-      const filePaths = files.map((file) => file.originalPath);
-      const latestMarks = filePaths.length > 0
-        ? await desktop.getLatestMarksForPaths(filePaths)
-        : {};
-      this.cacheLatestMarksForPaths(filePaths, latestMarks);
-
-      if (this.state.isLibraryFilterMarkedEnabled) {
-        files = files.filter((file) => !latestMarks[file.originalPath]);
-      }
-
-      this.state.currentFolderItems = [...directories, ...files].sort((a, b) => {
-        if (a.type === "directory" && b.type === "file") {
-          return -1;
-        }
-        if (a.type === "file" && b.type === "directory") {
-          return 1;
-        }
-        return naturalSort(a, b);
-      });
+      const items = await desktop.getFolderBrowserItems(folderPath, this.state.isLibraryFilterMarkedEnabled);
+      this.state.currentFolderItems = items;
       this.state.currentPage = 0;
       await this.renderCurrentPageThumbnails();
+      const files = items.filter((item) => item.type === "file");
       elements.selectFolderForSketchAndReturnToMenuButton.disabled = files.length === 0;
     } catch (error) {
       console.error(error);
@@ -1208,6 +1168,43 @@ export class AppController {
     this.setTextContentIfChanged(elements.mainMenuHintText, `${t("estimatedTime")}${targetCount}${t("estimated")}${estimated}`);
   }
 
+  async applySessionSnapshot(snapshot, { updateImage = true } = {}) {
+    if (!snapshot || typeof snapshot !== "object") {
+      return;
+    }
+
+    const previousIndex = this.state.currentImageIndex;
+    this.state.currentImageIndex = Number.isInteger(snapshot.currentImageIndex) ? snapshot.currentImageIndex : -1;
+    this.state.remainingTime = Number.isFinite(snapshot.remainingTime)
+      ? snapshot.remainingTime
+      : this.state.displayTime;
+    this.state.isPlaying = !!snapshot.isPlaying;
+    this.state.isPaused = !!snapshot.isPaused;
+    this.state.sessionHasPrev = !!snapshot.hasPrev;
+    this.state.sessionHasNext = !!snapshot.hasNext;
+
+    if (snapshot.markedPath) {
+      this.cacheLatestMarksForPaths(
+        [snapshot.markedPath],
+        snapshot.latestMark ? { [snapshot.markedPath]: snapshot.latestMark } : {},
+      );
+      await this.recalculateEligibilityFromBackend();
+    }
+
+    if (updateImage && this.state.currentImageIndex >= 0 && this.state.currentImageIndex !== previousIndex) {
+      this.updateImageDisplay(this.state.imageUrls[this.state.currentImageIndex]);
+    }
+
+    elements.pausePlayButton.textContent = this.state.isPaused ? "▶" : "⏸";
+    this.updateCountdownDisplay();
+    this.updateNavigationButtons();
+    this.updateMarkingUI();
+
+    if (!this.state.isPlaying && this.state.currentCountdownStyle === "text") {
+      elements.countdownElement.textContent = "已经没有下一张";
+    }
+  }
+
   async initiateSketchSession() {
     if (elements.startButton.disabled) {
       return;
@@ -1230,34 +1227,27 @@ export class AppController {
 
     const imageCount = Number.isFinite(this.state.imageCount) ? this.state.imageCount : null;
     try {
-      const result = await desktop.buildPlaybackPlan(
+      const result = await desktop.startSession(
         this.state.imageFiles.map((file) => file.path),
         this.state.isFilterMarkedEnabled,
         this.state.isRandomPlayback,
         imageCount,
+        Number.isFinite(this.state.displayTime) ? this.state.displayTime : null,
       );
 
       this.state.eligibleImageRawIndexes = Array.isArray(result?.eligibleIndexes)
         ? result.eligibleIndexes
         : eligibleIndexes;
-      this.state.currentSessionPlaybackQueue = Array.isArray(result?.playbackQueue)
-        ? result.playbackQueue
-        : [];
+      await this.applySessionSnapshot(result?.snapshot, { updateImage: false });
     } catch (error) {
-      console.error("Failed to build playback queue via Rust backend:", error);
-      const queue = this.state.isRandomPlayback ? shuffleArray(eligibleIndexes) : [...eligibleIndexes];
-      const targetCount = this.getTargetSketchCount(eligibleIndexes.length);
-      this.state.currentSessionPlaybackQueue = queue.slice(0, targetCount);
-    }
-
-    if (this.state.currentSessionPlaybackQueue.length === 0) {
+      console.error("Failed to start session via Rust backend:", error);
+      this.showAlert("会话启动失败，请重试。", "错误");
       return;
     }
 
-    this.state.displayedImageHistory = [];
-    this.state.historyPointer = -1;
-    this.state.isPlaying = true;
-    this.state.isPaused = false;
+    if (!this.state.isPlaying || this.state.currentImageIndex < 0) {
+      return;
+    }
 
     elements.controlsMenu.classList.add("hidden");
     elements.folderBrowserView.classList.add("hidden");
@@ -1275,57 +1265,25 @@ export class AppController {
     if (this.platform === "windows") {
       desktop.setDecorations(false);
     }
-    this.advanceImage(true).catch((error) => {
-      console.error("Failed to start sketch session playback:", error);
-    });
-  }
-
-  async advanceImage(isStartingNewSession = false) {
-    this.clearCountdownAdvanceTimeout();
-    this.clearLowTimeAlert();
-    this.state.hasLowTimeAlertShown = false;
-
-    if (this.state.currentSessionPlaybackQueue.length === 0) {
-      this.stopGame();
-      return;
-    }
-
-    let newIndex = -1;
-    let foundNext = false;
-
-    if (isStartingNewSession) {
-      [newIndex] = this.state.currentSessionPlaybackQueue;
-      foundNext = this.state.currentSessionPlaybackQueue.length > 0;
-    } else {
-      const currentQueueIndex = this.getCurrentQueueIndex();
-      if (currentQueueIndex !== -1 && currentQueueIndex + 1 < this.state.currentSessionPlaybackQueue.length) {
-        newIndex = this.state.currentSessionPlaybackQueue[currentQueueIndex + 1];
-        foundNext = true;
-      } else {
-        this.finishPlayback();
-        return;
-      }
-    }
-
-    if (!foundNext) {
-      this.finishPlayback();
-      return;
-    }
-
-    if (this.state.historyPointer < this.state.displayedImageHistory.length - 1) {
-      this.state.displayedImageHistory = this.state.displayedImageHistory.slice(0, this.state.historyPointer + 1);
-    }
-
-    this.state.displayedImageHistory.push(newIndex);
-    this.state.historyPointer = this.state.displayedImageHistory.length - 1;
-    this.state.currentImageIndex = newIndex;
-    this.state.remainingTime = this.state.displayTime;
-
-    this.updateImageDisplay(this.state.imageUrls[newIndex]);
+    this.updateImageDisplay(this.state.imageUrls[this.state.currentImageIndex]);
     this.updateCountdownDisplay();
     this.updateNavigationButtons();
     this.updateMarkingUI();
+    if (!this.state.isPaused) {
+      this.startCountdown();
+    }
+  }
 
+  async advanceImage() {
+    this.clearCountdownAdvanceTimeout();
+    this.clearLowTimeAlert();
+    this.state.hasLowTimeAlertShown = false;
+    const snapshot = await desktop.sessionNext();
+    await this.applySessionSnapshot(snapshot);
+    if (!this.state.isPlaying) {
+      this.finishPlayback();
+      return;
+    }
     if (!this.state.isPaused) {
       this.startCountdown();
     }
@@ -1337,6 +1295,8 @@ export class AppController {
     this.clearLowTimeAlert();
     this.state.isPlaying = false;
     this.state.isPaused = true;
+    this.state.sessionHasNext = false;
+    this.state.sessionHasPrev = false;
     this.state.remainingTime = 0;
     elements.pausePlayButton.textContent = "▶";
     if (this.state.currentCountdownStyle === "text") {
@@ -1349,40 +1309,34 @@ export class AppController {
   }
 
   showPreviousImage() {
-    if (this.state.historyPointer <= 0) {
-      this.showAlert("已是第一张图片。", "播放提示");
-      return;
-    }
-
-    clearInterval(this.state.countdownTimer);
-    this.clearCountdownAdvanceTimeout();
-    this.clearLowTimeAlert();
-    this.state.hasLowTimeAlertShown = false;
-    this.state.historyPointer -= 1;
-    this.state.currentImageIndex = this.state.displayedImageHistory[this.state.historyPointer];
-    this.state.remainingTime = this.state.displayTime;
-    this.updateImageDisplay(this.state.imageUrls[this.state.currentImageIndex]);
-    this.updateCountdownDisplay();
-    this.updateMarkingUI();
-
-    if (!this.state.isPaused) {
-      this.startCountdown();
-    }
-
-    this.updateNavigationButtons();
+    desktop.sessionPrev().then(async (snapshot) => {
+      if (!snapshot?.hasPrev && snapshot?.currentImageIndex === this.state.currentImageIndex) {
+        this.showAlert("已是第一张图片。", "播放提示");
+        return;
+      }
+      clearInterval(this.state.countdownTimer);
+      this.clearCountdownAdvanceTimeout();
+      this.clearLowTimeAlert();
+      this.state.hasLowTimeAlertShown = false;
+      await this.applySessionSnapshot(snapshot);
+      if (!this.state.isPaused) {
+        this.startCountdown();
+      }
+    }).catch((error) => {
+      console.error("Failed to navigate to previous image via session engine:", error);
+    });
   }
 
-  togglePausePlay() {
-    this.state.isPaused = !this.state.isPaused;
-    elements.pausePlayButton.textContent = this.state.isPaused ? "▶" : "⏸";
+  async togglePausePlay() {
+    const snapshot = await desktop.sessionTogglePause();
+    await this.applySessionSnapshot(snapshot, { updateImage: false });
     if (this.state.isPaused) {
       clearInterval(this.state.countdownTimer);
       this.clearCountdownAdvanceTimeout();
       this.clearLowTimeAlert();
-    } else {
-      this.startCountdown();
+      return;
     }
-    this.updateNavigationButtons();
+    this.startCountdown();
   }
 
   startCountdown() {
@@ -1395,41 +1349,16 @@ export class AppController {
 
     this.updateCountdownDisplay();
     this.state.countdownTimer = window.setInterval(async () => {
-      this.state.remainingTime -= 1;
-      this.updateCountdownDisplay();
-
-      if (this.state.remainingTime > 0) {
+      const snapshot = await desktop.sessionTick();
+      const previousIndex = this.state.currentImageIndex;
+      await this.applySessionSnapshot(snapshot);
+      if (!this.state.isPlaying) {
+        this.finishPlayback();
         return;
       }
-
-      clearInterval(this.state.countdownTimer);
-      const imageIndexAtZero = this.state.currentImageIndex;
-      const shouldWaitProgressFinish = !this.state.isCountdownHidden && this.state.currentCountdownStyle === "progressBar";
-      const finalizeAndAdvance = async () => {
-        if (!this.state.isPlaying || this.state.currentImageIndex !== imageIndexAtZero) {
-          return;
-        }
-        const currentFile = this.state.imageFiles[this.state.currentImageIndex];
-        if (currentFile) {
-          await desktop.saveImageMark(currentFile.path, this.state.displayTime);
-          const latestMark = await desktop.getLatestMarksForPaths([currentFile.path]);
-          this.cacheLatestMarksForPaths([currentFile.path], latestMark);
-          await this.recalculateEligibilityFromBackend();
-        }
-        await this.advanceImage();
-      };
-
-      if (!shouldWaitProgressFinish) {
-        await finalizeAndAdvance();
+      if (this.state.currentImageIndex !== previousIndex) {
         return;
       }
-
-      this.state.countdownAdvanceTimeout = window.setTimeout(() => {
-        this.state.countdownAdvanceTimeout = null;
-        finalizeAndAdvance().catch((error) => {
-          console.error("Failed to advance after countdown progress completion:", error);
-        });
-      }, 1000);
     }, 1000);
   }
 
@@ -1535,18 +1464,12 @@ export class AppController {
   }
 
   updateNavigationButtons() {
-    this.setDisabledIfChanged(elements.prevImageButton, this.state.historyPointer <= 0);
-    const currentQueueIndex = this.getCurrentQueueIndex();
-    const hasNextInQueue = currentQueueIndex !== -1 && currentQueueIndex + 1 < this.state.currentSessionPlaybackQueue.length;
-    this.setDisabledIfChanged(elements.nextImageButton, !hasNextInQueue);
+    this.setDisabledIfChanged(elements.prevImageButton, !this.state.sessionHasPrev);
+    this.setDisabledIfChanged(elements.nextImageButton, !this.state.sessionHasNext);
     this.setDisabledIfChanged(
       elements.pausePlayButton,
-      this.state.currentSessionPlaybackQueue.length === 0 || !this.state.isPlaying,
+      !this.state.isPlaying,
     );
-  }
-
-  getCurrentQueueIndex() {
-    return this.state.currentSessionPlaybackQueue.indexOf(this.state.currentImageIndex);
   }
 
   getAdaptiveGridStep(width, height) {
@@ -1682,8 +1605,15 @@ export class AppController {
     clearInterval(this.state.countdownTimer);
     this.clearCountdownAdvanceTimeout();
     this.clearLowTimeAlert();
+    try {
+      await desktop.endSession();
+    } catch (error) {
+      console.error("Failed to end Rust session:", error);
+    }
     this.state.isPlaying = false;
     this.state.isPaused = false;
+    this.state.sessionHasNext = false;
+    this.state.sessionHasPrev = false;
     elements.pausePlayButton.textContent = "⏸";
     elements.currentImage.src = "";
     await this.showMainMenu();
@@ -1703,7 +1633,7 @@ export class AppController {
   }
 
   async goUpFolder() {
-    const parent = getParentPath(this.state.currentLoadedFolderPath);
+    const parent = await desktop.getParentPath(this.state.currentLoadedFolderPath);
     if (!parent) {
       this.showAlert("已是顶层文件夹。", "提示");
       return;
@@ -1991,14 +1921,14 @@ export class AppController {
       return;
     }
 
-    const latestMarkMap = await desktop.getLatestMarksForPaths([file.path]);
-    if (latestMarkMap[file.path]) {
-      await desktop.clearImageMarksForPath(file.path);
-      this.cacheLatestMarksForPaths([file.path], {});
+    const duration = this.state.displayTime === Infinity ? 0 : this.state.displayTime;
+    const result = await desktop.toggleImageMark(file.path, duration);
+    if (result?.marked && result?.latestMark) {
+      this.cacheLatestMarksForPaths([file.path], {
+        [file.path]: result.latestMark,
+      });
     } else {
-      await desktop.saveImageMark(file.path, this.state.displayTime === Infinity ? 0 : this.state.displayTime);
-      const refreshedLatest = await desktop.getLatestMarksForPaths([file.path]);
-      this.cacheLatestMarksForPaths([file.path], refreshedLatest);
+      this.cacheLatestMarksForPaths([file.path], {});
     }
 
     this.updateMarkingUI();

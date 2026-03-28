@@ -25,21 +25,33 @@ export const desktop = {
     return command("open_folder_dialog", { currentPath: currentPath ?? null });
   },
 
-  async readFolderImages(folderPath) {
-    const items = await command("read_folder_images", { folderPath });
-    return items.map((item) =>
+  async loadSketchFolderData(folderPath, filterMarked) {
+    const response = await command("load_sketch_folder_data", { folderPath, filterMarked });
+    return {
+      ...response,
+      files: (response?.files || []).map((item) =>
+        item.type === "file"
+          ? {
+            ...item,
+            originalPath: item.originalPath ?? item.path,
+            path: toFileUrl(item.originalPath ?? item.path),
+          }
+          : item
+      ),
+    };
+  },
+
+  async getFolderBrowserItems(folderPath, filterMarked) {
+    const items = await command("get_folder_browser_items", { folderPath, filterMarked });
+    return (items?.items || []).map((item) =>
       item.type === "file"
         ? {
           ...item,
           originalPath: item.originalPath ?? item.path,
           path: toFileUrl(item.originalPath ?? item.path),
         }
-        : item,
+        : item
     );
-  },
-
-  async getFolderCompletionStates(folderPaths) {
-    return command("get_folder_completion_states", { folderPaths });
   },
 
   async getLatestMarksForPaths(filePaths) {
@@ -55,8 +67,42 @@ export const desktop = {
     });
   },
 
+  async startSession(imagePaths, filterMarked, isRandom, imageCount = null, displayTime = null) {
+    return command("start_session", {
+      imagePaths,
+      filterMarked,
+      isRandom,
+      imageCount,
+      displayTime,
+    });
+  },
+
+  async sessionNext() {
+    return command("session_next");
+  },
+
+  async sessionPrev() {
+    return command("session_prev");
+  },
+
+  async sessionTogglePause() {
+    return command("session_toggle_pause");
+  },
+
+  async sessionTick() {
+    return command("session_tick");
+  },
+
+  async endSession() {
+    return command("end_session");
+  },
+
   async isDirectory(path) {
     return command("is_directory", { path });
+  },
+
+  async getParentPath(path) {
+    return command("get_parent_path", { path });
   },
 
   async openFileInFinder(filePath) {
@@ -67,16 +113,12 @@ export const desktop = {
     return command("open_file_in_default_app", { filePath });
   },
 
-  async saveImageMark(filePath, duration) {
-    return command("save_image_mark", { filePath, duration });
-  },
-
-  async getImageMarks() {
-    return command("get_image_marks");
-  },
-
   async clearImageMarksForPath(filePath) {
     return command("clear_image_marks_for_path", { filePath });
+  },
+
+  async toggleImageMark(filePath, duration) {
+    return command("toggle_image_mark", { filePath, duration });
   },
 
   async setAlwaysOnTop(alwaysOnTop) {
