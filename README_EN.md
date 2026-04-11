@@ -1,6 +1,6 @@
 # SketchTool-Tuari
 
-[中文](./README.md)
+[中文](./README.md) / [日本語](./README_JA.md)
 
 A desktop sketch practice tool rebuilt with Tauri + Rust.  
 This version keeps the core workflow of the original app while adapting the window behavior, image playback, average-color background, grid overlay, and library experience for the current desktop implementation.
