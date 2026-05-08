@@ -33,11 +33,16 @@ jobs:
       - name: Build Tauri app
         run: npm run tauri build
 
+      - name: Package macOS app
+        run: |
+          cd src-tauri/target/release/bundle/macos
+          zip -r Cosmos.app.zip Cosmos.app
+
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
         with:
           name: macos-app
-          path: src-tauri/target/release/bundle/macos/*.app
+          path: src-tauri/target/release/bundle/macos/Cosmos.app.zip
 
   build-windows:
     runs-on: windows-latest

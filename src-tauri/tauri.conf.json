@@ -42,7 +42,8 @@
   "bundle": {
     "active": true,
     "targets": [
-      "app"
+      "app",
+      "nsis"
     ],
     "icon": [
       "icons/icon.png",
