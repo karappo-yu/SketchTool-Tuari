@@ -215,6 +215,8 @@ export class AppController {
       "countdownStyle",
       "countdownDisplayStyle",
       "isCountdownHidden",
+      "displayTime",
+      "imageCount",
       "defaultImageFolderPath",
       "mainMenuSelectedFolderPath",
       "isRandomPlayback",
@@ -237,6 +239,8 @@ export class AppController {
     this.state.currentGridColorHex = values.gridColor || DEFAULTS.gridColor;
     this.state.currentGridSize = this.normalizeGridCount(values.gridSize ?? DEFAULTS.gridSize);
     this.state.isCountdownHidden = values.isCountdownHidden ?? DEFAULTS.isCountdownHidden;
+    this.state.displayTime = values.displayTime === "Infinity" ? Infinity : (values.displayTime != null ? values.displayTime : DEFAULTS.displayTime);
+    this.state.imageCount = values.imageCount === "Infinity" ? Infinity : (values.imageCount != null ? values.imageCount : DEFAULTS.imageCount);
     this.state.currentDefaultImageFolderPath = values.defaultImageFolderPath || DEFAULTS.defaultImageFolderPath;
     this.state.mainMenuSelectedFolderPath = values.mainMenuSelectedFolderPath || DEFAULTS.mainMenuSelectedFolderPath;
     this.state.isRandomPlayback = values.isRandomPlayback ?? DEFAULTS.isRandomPlayback;
@@ -578,6 +582,7 @@ export class AppController {
       this.syncImageCountInput();
       this.updateMainMenuHintText();
       this.closeImageCountDropdown();
+      desktop.saveSetting("imageCount", "Infinity");
       return;
     }
 
@@ -604,6 +609,7 @@ export class AppController {
       this.syncDisplayTimeInput();
       this.updateMainMenuHintText();
       this.closeDisplayTimeDropdown();
+      desktop.saveSetting("displayTime", "Infinity");
       return;
     }
 
@@ -1898,6 +1904,7 @@ export class AppController {
 
     if (this.state.displayTime === Infinity) {
       this.syncDisplayTimeInput();
+      desktop.saveSetting("displayTime", "Infinity");
       return;
     }
 
@@ -1906,6 +1913,7 @@ export class AppController {
     }
 
     this.syncDisplayTimeInput();
+    desktop.saveSetting("displayTime", this.state.displayTime);
   }
 
   handleImageCountInput(value) {
@@ -1935,11 +1943,15 @@ export class AppController {
       this.state.imageCount = Infinity;
       this.syncImageCountInput();
       this.updateMainMenuHintText();
+      desktop.saveSetting("imageCount", "Infinity");
       return;
     }
 
     if (this.state.imageCount === Infinity) {
       this.syncImageCountInput();
+      desktop.saveSetting("imageCount", "Infinity");
+    } else if (!Number.isNaN(this.state.imageCount) && this.state.imageCount > 0) {
+      desktop.saveSetting("imageCount", this.state.imageCount);
     }
   }
 

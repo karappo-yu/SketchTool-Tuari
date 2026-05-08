@@ -12,6 +12,8 @@ export const DEFAULTS = {
   gridSize: 8,
   timeFormat: "hours:minutes:seconds",
   countdownStyle: "text",
+  displayTime: 60,
+  imageCount: Infinity,
   isRandomPlayback: true,
   isAlwaysOnTop: false,
   isLibraryFilterMarkedEnabled: false,
