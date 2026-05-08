@@ -72,6 +72,8 @@ struct Settings {
     is_filter_marked_enabled: bool,
     is_light_theme_enabled: bool,
     is_countdown_hidden: bool,
+    display_time: Option<Value>,
+    image_count: Option<Value>,
     startup_mode: String,
     main_menu_selected_folder_path: String,
     language: String,
@@ -98,6 +100,8 @@ impl Default for Settings {
             is_filter_marked_enabled: true,
             is_light_theme_enabled: false,
             is_countdown_hidden: false,
+            display_time: None,
+            image_count: None,
             startup_mode: "lastUsedPath".to_string(),
             main_menu_selected_folder_path: String::new(),
             language: "zh-CN".to_string(),
@@ -189,6 +193,8 @@ fn get_setting_value(settings: &Settings, key: &str) -> Value {
         "isFilterMarkedEnabled" => to_value(settings.is_filter_marked_enabled),
         "isLightThemeEnabled" => to_value(settings.is_light_theme_enabled),
         "isCountdownHidden" => to_value(settings.is_countdown_hidden),
+        "displayTime" => settings.display_time.clone().unwrap_or(Value::Null),
+        "imageCount" => settings.image_count.clone().unwrap_or(Value::Null),
         "startupMode" => to_value(settings.startup_mode.clone()),
         "mainMenuSelectedFolderPath" => to_value(settings.main_menu_selected_folder_path.clone()),
         "language" => to_value(settings.language.clone()),
@@ -227,6 +233,8 @@ fn apply_setting_value(settings: &mut Settings, key: &str, value: Value) -> Resu
         "isFilterMarkedEnabled" => set_bool(&mut settings.is_filter_marked_enabled, value),
         "isLightThemeEnabled" => set_bool(&mut settings.is_light_theme_enabled, value),
         "isCountdownHidden" => set_bool(&mut settings.is_countdown_hidden, value),
+        "displayTime" => set_optional_value(&mut settings.display_time, value),
+        "imageCount" => set_optional_value(&mut settings.image_count, value),
         "startupMode" => set_string(&mut settings.startup_mode, value),
         "mainMenuSelectedFolderPath" => set_string(&mut settings.main_menu_selected_folder_path, value),
         "language" => set_string(&mut settings.language, value),
@@ -277,6 +285,15 @@ fn set_i64(target: &mut i64, value: Value) -> Result<bool, String> {
 
 fn set_bool(target: &mut bool, value: Value) -> Result<bool, String> {
     let next = value.as_bool().ok_or_else(|| "expected bool".to_string())?;
+    if *target == next {
+        return Ok(false);
+    }
+    *target = next;
+    Ok(true)
+}
+
+fn set_optional_value(target: &mut Option<Value>, value: Value) -> Result<bool, String> {
+    let next = if value.is_null() { None } else { Some(value) };
     if *target == next {
         return Ok(false);
     }

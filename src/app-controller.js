@@ -309,7 +309,7 @@ export class AppController {
     try {
       this.state.mainMenuSelectedFolderPath = initialPath;
       await this.loadImagesForSketchFolder(initialPath);
-      await this.showFolderBrowserView(initialPath);
+      await this.showMainMenu();
     } catch (error) {
       console.error(error);
       this.state.mainMenuSelectedFolderPath = "";
