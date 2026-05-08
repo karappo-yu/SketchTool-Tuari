@@ -72,6 +72,8 @@ export class AppController {
       currentPage: 0,
       currentLanguage: "zh-CN",
       eligibleImageRawIndexes: [],
+      startImageIndex: 0,
+      folderProgressByPath: {},
     };
   }
 
@@ -113,6 +115,9 @@ export class AppController {
     elements.imageCountInput.addEventListener("click", () => this.openImageCountDropdown());
     elements.imageCountInput.addEventListener("change", (event) => this.handleImageCountCommit(event.target.value));
     elements.imageCountInput.addEventListener("blur", (event) => this.handleImageCountCommit(event.target.value));
+    elements.startPageInput.addEventListener("input", (event) => this.handleStartPageInput(event.target.value));
+    elements.startPageInput.addEventListener("change", (event) => this.handleStartPageCommit(event.target.value));
+    elements.startPageInput.addEventListener("blur", (event) => this.handleStartPageCommit(event.target.value));
     groups.imageCountDropdownOptions.forEach((option) => {
       option.addEventListener("mousedown", (event) => this.handleImageCountDropdownSelect(event));
     });
@@ -170,17 +175,19 @@ export class AppController {
       });
     });
 
-    groups.countdownVisibilityRadios.forEach((radio) => {
+    groups.countdownStyleRadios.forEach((radio) => {
       radio.addEventListener("change", async (event) => {
-        this.state.isCountdownHidden = event.target.value === "hide";
-        await desktop.saveSetting("isCountdownHidden", this.state.isCountdownHidden);
-        this.updateCountdownDisplay();
-      });
-    });
-
-    groups.countdownDisplayStyleRadios.forEach((radio) => {
-      radio.addEventListener("change", async (event) => {
-        await this.applyCountdownDisplayStyle(event.target.value, true);
+        const value = event.target.value;
+        if (value === "hide") {
+          this.state.isCountdownHidden = true;
+          await desktop.saveSetting("isCountdownHidden", true);
+          this.updateCountdownDisplay();
+        } else {
+          this.state.isCountdownHidden = false;
+          await desktop.saveSetting("isCountdownHidden", false);
+          await this.applyCountdownDisplayStyle(value, true);
+          this.updateCountdownDisplay();
+        }
       });
     });
 
@@ -217,6 +224,7 @@ export class AppController {
       "startupMode",
       "isLightThemeEnabled",
       "language",
+      "folderProgressByPath",
     ];
 
     const values = await desktop.loadSettings(keys);
@@ -237,6 +245,9 @@ export class AppController {
     this.state.isAlwaysOnTop = values.isAlwaysOnTop ?? DEFAULTS.isAlwaysOnTop;
     this.state.startupMode = values.startupMode ?? DEFAULTS.startupMode;
     this.state.currentLanguage = values.language || DEFAULTS.language;
+    this.state.folderProgressByPath = values.folderProgressByPath && typeof values.folderProgressByPath === "object"
+      ? values.folderProgressByPath
+      : {};
 
     this.applyLanguage(this.state.currentLanguage);
     this.applyTheme(this.state.isLightThemeEnabled, false);
@@ -265,11 +276,12 @@ export class AppController {
     groups.previewBackgroundChoiceRadios.forEach((radio) => {
       radio.checked = radio.value === this.state.previewBackgroundChoice;
     });
-    groups.countdownVisibilityRadios.forEach((radio) => {
-      radio.checked = (radio.value === "hide") === this.state.isCountdownHidden;
-    });
-    groups.countdownDisplayStyleRadios.forEach((radio) => {
-      radio.checked = radio.value === this.state.currentCountdownDisplayStyle;
+    groups.countdownStyleRadios.forEach((radio) => {
+      if (this.state.isCountdownHidden) {
+        radio.checked = radio.value === "hide";
+      } else {
+        radio.checked = radio.value === this.state.currentCountdownDisplayStyle;
+      }
     });
     groups.startupModeChoiceRadios.forEach((radio) => {
       radio.checked = radio.value === this.state.startupMode;
@@ -495,6 +507,24 @@ export class AppController {
 
   syncImageCountInput() {
     this.setValueIfChanged(elements.imageCountInput, this.state.imageCount === Infinity ? t("allOption") : this.state.imageCount);
+  }
+
+  syncStartPageInput() {
+    const total = this.state.imageFiles.length;
+    elements.startPageRow.classList.toggle("hidden", total === 0);
+    this.setTextContentIfChanged(elements.startPageTotalLabel, t("startPageTotal").replace("{count}", total));
+    if (!this.state.isRandomPlayback) {
+      this.setValueIfChanged(elements.startPageInput, total === 0 ? 1 : this.state.startImageIndex + 1);
+    }
+    this.updateStartPageAvailability();
+  }
+
+  updateStartPageAvailability() {
+    const disabled = this.state.isRandomPlayback || this.state.imageFiles.length === 0;
+    elements.startPageInput.disabled = disabled;
+    elements.startPageRow.title = this.state.isRandomPlayback
+      ? t("startPageRandomOnly")
+      : "";
   }
 
   syncDisplayTimeInput() {
@@ -832,6 +862,7 @@ export class AppController {
       imageFiles.map((file) => file.originalPath),
       data?.latestMarks || {},
     );
+    this.state.startImageIndex = this.findProgressIndex(this.getCurrentFolderProgress());
     this.refreshMainMenuEligibilityState();
     this.setTextContentIfChanged(elements.sketchFolderInputDisplay, folderPath || "点击选择速写文件夹...");
   }
@@ -972,6 +1003,16 @@ export class AppController {
 
         thumbnailItem.appendChild(img);
         thumbnailItem.appendChild(label);
+        const startFromHereButton = document.createElement("button");
+        startFromHereButton.type = "button";
+        startFromHereButton.classList.add("thumbnail-start-button");
+        startFromHereButton.textContent = "▶";
+        startFromHereButton.title = "设为起始页";
+        startFromHereButton.addEventListener("click", async (event) => {
+          event.stopPropagation();
+          await this.setStartPageFromBrowserItem(item);
+        });
+        thumbnailItem.appendChild(startFromHereButton);
 
         fileThumbnailByPath.set(item.originalPath, { item, thumbnailItem });
 
@@ -1070,6 +1111,36 @@ export class AppController {
     await this.setTrafficLightVisibility(true);
   }
 
+  async setStartPageFromBrowserItem(item) {
+    if (!item?.originalPath || !this.state.currentLoadedFolderPath) {
+      return;
+    }
+
+    this.state.mainMenuSelectedFolderPath = this.state.currentLoadedFolderPath;
+    await desktop.saveSetting("mainMenuSelectedFolderPath", this.state.mainMenuSelectedFolderPath);
+    await this.loadImagesForSketchFolder(this.state.currentLoadedFolderPath);
+
+    const targetIndex = this.state.imageFiles.findIndex((file) =>
+      file.path === item.originalPath || file.name === item.name
+    );
+    if (targetIndex < 0) {
+      this.showAlert("无法在当前文件夹中定位这张图片。", "无法设置起始页");
+      return;
+    }
+
+    this.state.startImageIndex = targetIndex;
+    if (this.state.isRandomPlayback) {
+      this.state.isRandomPlayback = false;
+      elements.randomPlaybackToggle.classList.toggle("active", false);
+      await desktop.saveSetting("isRandomPlayback", false);
+    }
+    this.syncStartPageInput();
+    await this.showMainMenu(this.state.currentLoadedFolderPath);
+    this.state.startImageIndex = targetIndex;
+    this.syncStartPageInput();
+    this.setTextContentIfChanged(elements.mainMenuHintText, `已将第 ${targetIndex + 1} 页设为起始页，点击开始速写。`);
+  }
+
   showPreviousPageOfThumbnails() {
     if (this.state.currentPage > 0) {
       this.state.currentPage -= 1;
@@ -1103,17 +1174,142 @@ export class AppController {
     return Math.min(eligibleCount, this.state.imageCount);
   }
 
+  getCurrentFolderProgress() {
+    const folderPath = this.state.mainMenuSelectedFolderPath;
+    if (!folderPath) {
+      return null;
+    }
+    const progress = this.state.folderProgressByPath?.[folderPath];
+    return progress && typeof progress === "object" ? progress : null;
+  }
+
+  findProgressIndex(progress) {
+    if (!progress || this.state.imageFiles.length === 0) {
+      return 0;
+    }
+
+    const byPath = this.state.imageFiles.findIndex((file) => file.path === progress.filePath);
+    if (byPath >= 0) {
+      return byPath;
+    }
+
+    const byName = this.state.imageFiles.findIndex((file) => file.name === progress.fileName);
+    if (byName >= 0) {
+      return byName;
+    }
+
+    const rawIndex = Number.isInteger(progress.rawIndex) ? progress.rawIndex : 0;
+    return Math.max(0, Math.min(this.state.imageFiles.length - 1, rawIndex));
+  }
+
+  getFirstPlayableIndexFrom(rawIndex) {
+    if (this.state.imageFiles.length === 0) {
+      return -1;
+    }
+
+    const startIndex = Math.max(0, Math.min(this.state.imageFiles.length - 1, rawIndex));
+    const eligible = this.getEligibleImageRawIndexes();
+    if (!Array.isArray(eligible) || eligible.length === 0) {
+      return -1;
+    }
+
+    const next = eligible.find((index) => index >= startIndex);
+    if (Number.isInteger(next)) {
+      return next;
+    }
+    return eligible[eligible.length - 1] ?? -1;
+  }
+
+  async saveCurrentFolderProgress() {
+    const folderPath = this.state.mainMenuSelectedFolderPath;
+    const currentIndex = this.state.currentImageIndex;
+    const currentFile = this.state.imageFiles[currentIndex];
+    if (!folderPath || !currentFile || currentIndex < 0) {
+      return;
+    }
+
+    const nextProgressByPath = {
+      ...this.state.folderProgressByPath,
+      [folderPath]: {
+        folderPath,
+        filePath: currentFile.path,
+        fileName: currentFile.name,
+        rawIndex: currentIndex,
+        totalImages: this.state.imageFiles.length,
+        playbackMode: this.state.isRandomPlayback ? "random" : "sequential",
+        filterMarked: this.state.isFilterMarkedEnabled,
+        updatedAt: new Date().toISOString(),
+      },
+    };
+
+    this.state.folderProgressByPath = nextProgressByPath;
+    await desktop.saveSetting("folderProgressByPath", nextProgressByPath);
+    this.updateStartPageAvailability();
+  }
+
+  handleStartPageInput(value) {
+    const total = this.state.imageFiles.length;
+    const nextPage = parseInt(`${value ?? ""}`.trim(), 10);
+    if (!Number.isInteger(nextPage) || nextPage < 1 || total === 0) {
+      this.state.startImageIndex = 0;
+      this.updateMainMenuHintText();
+      return;
+    }
+    this.state.startImageIndex = Math.min(total - 1, nextPage - 1);
+    this.updateMainMenuHintText();
+  }
+
+  handleStartPageCommit(value) {
+    const total = this.state.imageFiles.length;
+    if (total === 0) {
+      this.state.startImageIndex = 0;
+      this.syncStartPageInput();
+      return;
+    }
+
+    const nextPage = parseInt(`${value ?? ""}`.trim(), 10);
+    if (!Number.isInteger(nextPage) || nextPage < 1 || nextPage > total) {
+      this.showAlert(`请输入 1 到 ${total} 之间的页码。`, "页码无效");
+      this.state.startImageIndex = Math.max(0, Math.min(total - 1, this.state.startImageIndex));
+      this.syncStartPageInput();
+      return;
+    }
+
+    this.state.startImageIndex = nextPage - 1;
+    this.syncStartPageInput();
+    this.updateMainMenuHintText();
+  }
+
+  resumeLastFolderProgress() {
+    const progress = this.getCurrentFolderProgress();
+    if (!progress) {
+      return;
+    }
+    this.state.startImageIndex = this.findProgressIndex(progress);
+    this.syncStartPageInput();
+    this.setTextContentIfChanged(elements.mainMenuHintText, `已设为上次进度：第 ${this.state.startImageIndex + 1} 页，点击开始速写。`);
+  }
+
   refreshMainMenuEligibilityState() {
     this.updateStartButtonState();
     this.updateMainMenuHintText();
+    this.syncStartPageInput();
   }
 
   updateStartButtonState() {
     const eligibleCount = this.getEligibleImageCount();
-    this.setDisabledIfChanged(elements.startButton, eligibleCount === 0);
+    const hasPlayableFromStart = this.state.isRandomPlayback
+      ? eligibleCount > 0
+      : this.getFirstPlayableIndexFrom(this.state.startImageIndex) >= 0;
+    this.setDisabledIfChanged(elements.startButton, !hasPlayableFromStart);
 
-    if (eligibleCount > 0) {
+    if (hasPlayableFromStart) {
       elements.startButton.setAttribute("data-tooltip", "开始速写");
+      return;
+    }
+
+    if (!this.state.isRandomPlayback && eligibleCount > 0) {
+      elements.startButton.setAttribute("data-tooltip", "起始页不可播放");
       return;
     }
 
@@ -1195,9 +1391,14 @@ export class AppController {
       this.updateImageDisplay(this.state.imageUrls[this.state.currentImageIndex]);
     }
 
+    if (this.state.currentImageIndex >= 0 && this.state.currentImageIndex !== previousIndex) {
+      await this.saveCurrentFolderProgress();
+    }
+
     elements.pausePlayButton.textContent = this.state.isPaused ? "▶" : "⏸";
     this.updateCountdownDisplay();
     this.updateNavigationButtons();
+    this.updatePlaybackPageIndicator();
     this.updateMarkingUI();
 
     if (!this.state.isPlaying && this.state.currentCountdownStyle === "text") {
@@ -1224,6 +1425,18 @@ export class AppController {
     if (eligibleIndexes.length === 0) {
       return;
     }
+    const startIndex = this.state.isRandomPlayback
+      ? null
+      : this.getFirstPlayableIndexFrom(this.state.startImageIndex);
+    if (!this.state.isRandomPlayback && startIndex < 0) {
+      this.showAlert("当前没有可播放的图片，请关闭过滤或重新选择文件夹。", "无法开始");
+      return;
+    }
+    if (!this.state.isRandomPlayback && startIndex !== this.state.startImageIndex) {
+      this.showAlert(`第 ${this.state.startImageIndex + 1} 页不可播放，已从第 ${startIndex + 1} 页开始。`, "起始页已调整");
+      this.state.startImageIndex = startIndex;
+      this.syncStartPageInput();
+    }
 
     const imageCount = Number.isFinite(this.state.imageCount) ? this.state.imageCount : null;
     try {
@@ -1233,6 +1446,7 @@ export class AppController {
         this.state.isRandomPlayback,
         imageCount,
         Number.isFinite(this.state.displayTime) ? this.state.displayTime : null,
+        startIndex,
       );
 
       this.state.eligibleImageRawIndexes = Array.isArray(result?.eligibleIndexes)
@@ -1472,6 +1686,18 @@ export class AppController {
     );
   }
 
+  updatePlaybackPageIndicator() {
+    const total = this.state.imageFiles.length;
+    if (!elements.playbackPageIndicator) {
+      return;
+    }
+    if (this.state.currentImageIndex < 0 || total === 0) {
+      this.setTextContentIfChanged(elements.playbackPageIndicator, "");
+      return;
+    }
+    this.setTextContentIfChanged(elements.playbackPageIndicator, `${this.state.currentImageIndex + 1} / ${total}`);
+  }
+
   getAdaptiveGridStep(width, height) {
     const targetCount = this.normalizeGridCount(this.state.currentGridSize);
     const safeWidth = Math.max(1, width);
@@ -1605,6 +1831,7 @@ export class AppController {
     clearInterval(this.state.countdownTimer);
     this.clearCountdownAdvanceTimeout();
     this.clearLowTimeAlert();
+    await this.saveCurrentFolderProgress();
     try {
       await desktop.endSession();
     } catch (error) {
@@ -1717,9 +1944,19 @@ export class AppController {
   }
 
   async toggleRandomPlayback() {
+    const wasRandom = this.state.isRandomPlayback;
     this.state.isRandomPlayback = !this.state.isRandomPlayback;
     elements.randomPlaybackToggle.classList.toggle("active", this.state.isRandomPlayback);
     await desktop.saveSetting("isRandomPlayback", this.state.isRandomPlayback);
+    // 从随机切到顺序时，从输入框当前值同步回 startImageIndex，避免覆盖用户看到的数字
+    if (wasRandom && !this.state.isRandomPlayback) {
+      const inputValue = parseInt(elements.startPageInput.value, 10);
+      const total = this.state.imageFiles.length;
+      if (!isNaN(inputValue) && inputValue >= 1 && total > 0) {
+        this.state.startImageIndex = Math.min(inputValue - 1, total - 1);
+      }
+    }
+    this.refreshMainMenuEligibilityState();
   }
 
   async togglePlaybackFilter() {

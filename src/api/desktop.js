@@ -67,13 +67,14 @@ export const desktop = {
     });
   },
 
-  async startSession(imagePaths, filterMarked, isRandom, imageCount = null, displayTime = null) {
+  async startSession(imagePaths, filterMarked, isRandom, imageCount = null, displayTime = null, startIndex = null) {
     return command("start_session", {
       imagePaths,
       filterMarked,
       isRandom,
       imageCount,
       displayTime,
+      startIndex,
     });
   },
 

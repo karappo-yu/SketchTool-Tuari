@@ -130,6 +130,7 @@ pub fn start_session(
     is_random: bool,
     image_count: Option<usize>,
     display_time: Option<i64>,
+    start_index: Option<usize>,
     state: tauri::State<'_, AppState>,
 ) -> Result<StartSessionResponse, String> {
     let marked_set: HashSet<String> = if filter_marked {
@@ -157,7 +158,9 @@ pub fn start_session(
     let target_count = image_count
         .map(|count| count.min(playback_queue.len()))
         .unwrap_or(playback_queue.len());
-    playback_queue.truncate(target_count);
+    if start_index.is_none() || is_random {
+        playback_queue.truncate(target_count);
+    }
 
     let mut engine = session_engine()
         .lock()
@@ -171,9 +174,16 @@ pub fn start_session(
     engine.is_playing = !engine.queue.is_empty();
     engine.is_paused = false;
 
-    if let Some(first) = engine.queue.first().copied() {
-        engine.history.push(first);
-        engine.pointer = Some(0);
+    let start_queue_index = if is_random {
+        None
+    } else {
+        start_index.and_then(|start| engine.queue.iter().position(|index| *index >= start))
+    };
+    let initial_queue_index = start_queue_index.unwrap_or(0);
+
+    if engine.queue.get(initial_queue_index).is_some() {
+        engine.history = engine.queue.iter().take(initial_queue_index + 1).copied().collect();
+        engine.pointer = Some(engine.history.len() - 1);
     }
 
     Ok(StartSessionResponse {

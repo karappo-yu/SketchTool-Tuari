@@ -1,6 +1,7 @@
 mod marks;
 
 use std::{
+    collections::HashMap,
     fs,
     path::PathBuf,
     sync::Mutex,
@@ -25,6 +26,19 @@ pub struct WindowBounds {
     pub height: u32,
     pub x: Option<i32>,
     pub y: Option<i32>,
+}
+
+#[derive(Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct FolderProgress {
+    pub folder_path: String,
+    pub file_path: String,
+    pub file_name: String,
+    pub raw_index: usize,
+    pub total_images: usize,
+    pub playback_mode: String,
+    pub filter_marked: bool,
+    pub updated_at: String,
 }
 
 impl Default for WindowBounds {
@@ -61,6 +75,7 @@ struct Settings {
     startup_mode: String,
     main_menu_selected_folder_path: String,
     language: String,
+    folder_progress_by_path: HashMap<String, FolderProgress>,
 }
 
 impl Default for Settings {
@@ -86,6 +101,7 @@ impl Default for Settings {
             startup_mode: "lastUsedPath".to_string(),
             main_menu_selected_folder_path: String::new(),
             language: "zh-CN".to_string(),
+            folder_progress_by_path: HashMap::new(),
         }
     }
 }
@@ -176,6 +192,7 @@ fn get_setting_value(settings: &Settings, key: &str) -> Value {
         "startupMode" => to_value(settings.startup_mode.clone()),
         "mainMenuSelectedFolderPath" => to_value(settings.main_menu_selected_folder_path.clone()),
         "language" => to_value(settings.language.clone()),
+        "folderProgressByPath" => to_value(settings.folder_progress_by_path.clone()),
         _ => Value::Null,
     }
 }
@@ -213,6 +230,14 @@ fn apply_setting_value(settings: &mut Settings, key: &str, value: Value) -> Resu
         "startupMode" => set_string(&mut settings.startup_mode, value),
         "mainMenuSelectedFolderPath" => set_string(&mut settings.main_menu_selected_folder_path, value),
         "language" => set_string(&mut settings.language, value),
+        "folderProgressByPath" => {
+            let next: HashMap<String, FolderProgress> = serde_json::from_value(value).map_err(|error| error.to_string())?;
+            if settings.folder_progress_by_path == next {
+                return Ok(false);
+            }
+            settings.folder_progress_by_path = next;
+            Ok(true)
+        }
         _ => Ok(false),
     }
 }

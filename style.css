@@ -310,7 +310,7 @@ body {
 .thumbnail-mark-info {
     position: absolute;
     top: 5px;
-    left: 5px;
+    right: 5px;
     background: var(--mark-info-bg);
     color: var(--mark-info-text-color); /* Use the new variable for consistent white text */
     font-size: 0.75em;
@@ -322,6 +322,36 @@ body {
     user-select: none;
     pointer-events: auto; /* Allow interaction */
     z-index: 1;
+}
+
+.thumbnail-start-button {
+    position: absolute;
+    left: 6px;
+    top: 6px;
+    width: 28px;
+    height: 28px;
+    min-width: 0;
+    padding: 0;
+    border-radius: 50%;
+    font-size: 0.8em;
+    line-height: 1;
+    opacity: 0.86;
+    transform: translateY(0);
+    transition: opacity 0.2s ease, transform 0.2s ease, background 0.2s ease;
+    background: var(--button-toggle-bg);
+    color: var(--text-color);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.thumbnail-item:hover .thumbnail-start-button {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.thumbnail-start-button:hover {
+    background: var(--button-toggle-hover-bg);
 }
 
 .delete-mark-button {
@@ -392,6 +422,29 @@ body.light-theme .delete-mark-button:hover {
 
 .inline-setup-field input {
     min-width: 0;
+}
+
+.start-page-row.hidden {
+    display: none;
+}
+
+.start-page-row {
+    align-items: center;
+}
+
+.start-page-row .inline-setup-field {
+    flex: 1 1 auto;
+}
+
+#startPageInput {
+    width: 76px;
+    flex: 0 0 76px;
+}
+
+.setup-hint {
+    color: var(--info-text-color);
+    font-size: 0.85em;
+    white-space: nowrap;
 }
 
 .input-with-dropdown {

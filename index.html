@@ -51,6 +51,13 @@
                     </div>
                 </div>
             </div>
+            <div id="startPageRow" class="main-setup-row start-page-row hidden">
+                <div class="inline-setup-field">
+                    <label for="startPageInput" data-i18n="startPage">起始页:</label>
+                    <input type="number" id="startPageInput" min="1" value="1" autocomplete="off">
+                    <span id="startPageTotalLabel" class="setup-hint">/ 共 0 页</span>
+                </div>
+            </div>
             <div class="buttons-group">
                 <button id="startButton" class="primary" data-i18n-title="startSketch" data-tooltip="开始速写" data-i18n="startSketch">开始速写</button>
             </div>
@@ -283,17 +290,10 @@
             <div class="settings-row-compact">
                 <label data-i18n="countdown">倒计时:</label>
                 <div class="radio-group-inline">
-                    <label data-i18n="show"><input type="radio" name="countdownVisibility" value="show" checked> 显示</label>
-                    <label data-i18n="hide"><input type="radio" name="countdownVisibility" value="hide"> 隐藏</label>
-                </div>
-            </div>
-
-            <div class="settings-row-compact">
-                <label data-i18n="countdownDisplayMode">倒计时样式:</label>
-                <div class="radio-group-inline">
-                    <label data-i18n="secondsOnly"><input type="radio" name="countdownDisplayStyle" value="seconds"> 只秒</label>
-                    <label data-i18n="hoursMinutesSeconds"><input type="radio" name="countdownDisplayStyle" value="hms" checked> 时:分:秒</label>
-                    <label data-i18n="countdownStyleBar"><input type="radio" name="countdownDisplayStyle" value="progressBar"> 进度条</label>
+                    <label data-i18n="hide"><input type="radio" name="countdownStyle" value="hide"> 隐藏</label>
+                    <label data-i18n="secondsOnly"><input type="radio" name="countdownStyle" value="seconds"> 只秒</label>
+                    <label data-i18n="hoursMinutesSeconds"><input type="radio" name="countdownStyle" value="hms" checked> 时:分:秒</label>
+                    <label data-i18n="countdownStyleBar"><input type="radio" name="countdownStyle" value="progressBar"> 进度条</label>
                 </div>
             </div>
 

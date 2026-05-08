@@ -109,6 +109,9 @@ export const translations = {
     backToMenu: "返回菜单",
     yes: "是",
     no: "否",
+    startPage: "起始页:",
+    startPageTotal: "/ 共 {count} 页",
+    startPageRandomOnly: "起始页仅在顺序模式下可用",
   },
   en: {
     appTitle: "Time Sketch",
@@ -218,6 +221,9 @@ export const translations = {
     backToMenu: "Back to Menu",
     yes: "Yes",
     no: "No",
+    startPage: "Start Page:",
+    startPageTotal: "/ {count} pages",
+    startPageRandomOnly: "Start page is only available in sequential mode",
   },
   ja: {
     appTitle: "タイムスケッチ",
@@ -327,6 +333,9 @@ export const translations = {
     backToMenu: "メニューに戻る",
     yes: "はい",
     no: "いいえ",
+    startPage: "開始ページ：",
+    startPageTotal: "/ 全{count}ページ",
+    startPageRandomOnly: "開始ページは順次モードでのみ使用できます",
   },
 };
 
