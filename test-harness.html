@@ -205,6 +205,7 @@
                 scheduleGridRedraw: () => {},
             };
             const controller = new DrawingModeController(host);
+            window.__controller = controller;
             controller.bindEvents();
             log("bindEvents ok");
 
@@ -222,9 +223,9 @@
                 " @ " + Math.round(rect.left) + "," + Math.round(rect.top) +
                 " pointerEvents=" + getComputedStyle(canvas).pointerEvents);
 
-            const dispatch = (type, x, y) => {
+            const dispatch = (type, x, y, buttons = 1) => {
                 canvas.dispatchEvent(new PointerEvent(type, {
-                    clientX: x, clientY: y, button: 0, buttons: 1,
+                    clientX: x, clientY: y, button: 0, buttons,
                     pointerId: 7, pointerType: "mouse", bubbles: true, cancelable: true,
                 }));
             };
@@ -261,6 +262,17 @@
             surface.moveActiveLayer(1);
             surface.deleteActiveLayer();
             log("layers after move+delete: " + surface.layers.length);
+
+            // 数位笔橡皮键：buttons=1 画 → buttons=33（1|32）中途变擦 → 松开恢复
+            controller.selectPenTool();
+            dispatch("pointerdown", cx - 40, cy - 40);
+            dispatch("pointermove", cx - 30, cy - 40);
+            dispatch("pointermove", cx - 20, cy - 40);
+            dispatch("pointermove", cx - 10, cy - 40, 33); // 按住笔上橡皮键
+            dispatch("pointerup", cx, cy - 40);
+            const penLayer = controller.referenceSurface.layers[0];
+            const lastTwo = penLayer.actions.slice(-2).map((a) => a.type + ":" + (a.stroke?.points?.length ?? "-"));
+            log("pen-button eraser split: " + lastTwo.join(" | "));
 
             // 面板切换参考面 / 临摹面
             controller.setCopyModeEnabled(true);

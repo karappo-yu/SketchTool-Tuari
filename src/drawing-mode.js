@@ -462,11 +462,6 @@ class AnnotationSurface {
     this.clearVisible();
   }
 
-  invalidate() {
-    this.loadToken += 1;
-    this.resetRuntime();
-  }
-
   serialize() {
     return {
       version: 3,
@@ -757,9 +752,10 @@ export class DrawingModeController {
     this.isCopyModeEnabled = false;
     this.previewImageOpacity = 1;
 
-    // 数位板笔压：Rust 桥（macOS）推送的样本流；Windows 走 PointerEvent 原生 pressure
+    // 数位板：Rust 桥（macOS）推送的笔压样本流与橡皮擦设备标志；Windows 走原生 pressure
     this.pressureSamples = [];
     this.pressureSmoothed = 1;
+    this.penEraserHeld = false;
 
     this.referenceSurface = new AnnotationSurface({
       canvas: byId("annotation-canvas"),
@@ -915,17 +911,29 @@ export class DrawingModeController {
     document.addEventListener("pointerdown", (event) => this.handleOutsidePointerDown(event));
     window.addEventListener("resize", () => this.scheduleRedraw());
 
-    listen("pen-pressure", (event) => {
-      const pressure = Number(event.payload);
-      if (!Number.isFinite(pressure)) {
-        return;
+    // 右键拖动用于临时橡皮，屏蔽画布上的右键菜单
+    for (const surface of this.surfaces) {
+      surface.canvas?.addEventListener("contextmenu", (event) => event.preventDefault());
+    }
+
+    listen("pen-state", (event) => {
+      const payload = event.payload || {};
+      const pressure = Number(payload.pressure);
+      if (Number.isFinite(pressure)) {
+        this.pressureSamples.push({ at: Date.now(), pressure });
+        if (this.pressureSamples.length > 64) {
+          this.pressureSamples.splice(0, this.pressureSamples.length - 64);
+        }
       }
-      this.pressureSamples.push({ at: Date.now(), pressure });
-      if (this.pressureSamples.length > 64) {
-        this.pressureSamples.splice(0, this.pressureSamples.length - 64);
+      // Wacom"橡皮擦"动作会让系统把笔报告为 Eraser 设备，Rust 桥原样转发。
+      // 只影响实际擦除与光标形态，竖条按钮高亮保持用户选中的工具不变
+      const eraserHeld = payload.eraser === true;
+      if (eraserHeld !== this.penEraserHeld) {
+        this.penEraserHeld = eraserHeld;
+        this.syncBucketCursorClass();
       }
     }).catch((error) => {
-      console.warn("Pen pressure bridge unavailable:", error);
+      console.warn("Pen state bridge unavailable:", error);
     });
 
     this.syncColorEditors();
@@ -1302,9 +1310,22 @@ export class DrawingModeController {
     }
   }
 
+  /** 竖条按钮高亮只反映选中的工具（按住笔键的临时橡皮不改变高亮） */
+  syncToolButtonsVisual() {
+    if (!this.toolButtons.pen) {
+      return;
+    }
+    const eraseActive = this.tool.eraser;
+    const bucketActive = this.tool.bucket;
+    const penActive = !bucketActive && !eraseActive;
+    this.toolButtons.pen.classList.toggle("active", penActive);
+    this.toolButtons.eraser.classList.toggle("active", eraseActive);
+    this.toolButtons.bucket.classList.toggle("active", bucketActive);
+  }
+
   /** 画笔/橡皮用圆环光标（cursor:none），油漆桶用自定义图标光标 */
   syncBucketCursorClass() {
-    const isBucket = this.tool.bucket;
+    const isBucket = this.tool.bucket && this.penEraserHeld !== true;
     this.canvas.classList.toggle("tool-bucket", isBucket);
     byId("practice-canvas")?.classList.toggle("tool-bucket", isBucket);
   }
@@ -1312,10 +1333,8 @@ export class DrawingModeController {
   selectPenTool({ keepPopout = false } = {}) {
     this.tool.bucket = false;
     this.tool.eraser = false;
-    this.toolButtons.pen.classList.add("active");
-    this.toolButtons.eraser.classList.remove("active");
-    this.toolButtons.bucket.classList.remove("active");
     this.syncBucketCursorClass();
+    this.syncToolButtonsVisual();
     if (!keepPopout) {
       this.closePopouts();
     }
@@ -1324,20 +1343,16 @@ export class DrawingModeController {
   selectEraserTool() {
     this.tool.bucket = false;
     this.tool.eraser = true;
-    this.toolButtons.eraser.classList.add("active");
-    this.toolButtons.pen.classList.remove("active");
-    this.toolButtons.bucket.classList.remove("active");
     this.syncBucketCursorClass();
+    this.syncToolButtonsVisual();
     this.closePopouts();
   }
 
   selectBucketTool() {
     this.tool.bucket = true;
     this.tool.eraser = false;
-    this.toolButtons.bucket.classList.add("active");
-    this.toolButtons.pen.classList.remove("active");
-    this.toolButtons.eraser.classList.remove("active");
     this.syncBucketCursorClass();
+    this.syncToolButtonsVisual();
     this.closePopouts();
   }
 
@@ -1384,7 +1399,11 @@ export class DrawingModeController {
     if (!this.brushCursor) {
       return;
     }
-    if (!this.isDrawModeEnabled || this.tool.bucket) {
+    if (!this.isDrawModeEnabled) {
+      this.hideBrushCursor();
+      return;
+    }
+    if (this.tool.bucket && this.penEraserHeld !== true) {
       // 油漆桶使用自定义图标光标，无需圆环
       this.hideBrushCursor();
       return;
@@ -1504,6 +1523,18 @@ export class DrawingModeController {
     return [nx, ny];
   }
 
+  /**
+   * 数位笔橡皮擦判定：
+   * - Pointer Events buttons 掩码第 32 位（WebView 原生透传时，如 Windows Ink）
+   * - Rust 桥转发的 Eraser 设备标志（macOS Wacom"橡皮擦"动作）
+   */
+  isEraseButtonHeld(event) {
+    if ((Number(event.buttons ?? 0) & 32) !== 0) {
+      return true;
+    }
+    return this.penEraserHeld === true;
+  }
+
   currentEraserWidthNorm(surface) {
     const rect = surface.canvas.getBoundingClientRect();
     if (rect.width <= 0) {
@@ -1597,7 +1628,8 @@ export class DrawingModeController {
   }
 
   handlePointerDown(surface, event) {
-    if (!this.isDrawModeEnabled || event.button !== 0) {
+    // 左键 = 当前工具；中键/右键 = 临时橡皮
+    if (!this.isDrawModeEnabled || ![0, 1, 2].includes(event.button)) {
       return;
     }
     const point = this.pointFromEvent(event, surface);
@@ -1608,7 +1640,12 @@ export class DrawingModeController {
     event.preventDefault();
     this.closePopouts();
 
-    if (this.tool.bucket) {
+    // 右键 / 中键按下 = 临时橡皮（兼容 Wacom 等驱动把侧键映射为鼠标中/右键的方案）
+    const eraseByPointerButton = event.button === 1 || event.button === 2;
+    // 数位笔橡皮键（含 Wacom 橡皮擦动作桥接）= 临时橡皮，优先于任何工具（含油漆桶）
+    const eraseByPenButton = this.isEraseButtonHeld(event);
+
+    if (this.tool.bucket && !eraseByPointerButton && !eraseByPenButton) {
       const layer = surface.activeLayer();
       if (!layer) {
         return;
@@ -1630,11 +1667,12 @@ export class DrawingModeController {
     }
 
     const rect = surface.canvas.getBoundingClientRect();
-    const isErase = this.tool.eraser;
     const layer = surface.activeLayer();
     if (!layer) {
       return;
     }
+    // 橡皮模式 = 选中橡皮工具、按住数位笔的橡皮键（buttons 第 32 位）、或右键/中键拖动
+    const isErase = this.tool.eraser || eraseByPointerButton || eraseByPenButton;
     const pressure = isErase ? 1 : this.pressureFromEvent(event);
     this.pressureSmoothed = pressure;
     this.isStrokeActive = true;
@@ -1645,13 +1683,14 @@ export class DrawingModeController {
     }
     this.activeStroke = {
       layer,
-      points: [[point[0], point[1], pressure]],
-      color: isErase ? "" : this.tool.color,
-      width: isErase ? this.currentEraserWidthNorm(surface) : this.tool.size / rect.width,
-      erase: isErase,
+      // 分段记录：一笔中途切换画/擦（如笔上橡皮键）时拆为多段，回放与撤销都正确
+      segments: [{ erase: isErase, points: [[point[0], point[1], pressure]] }],
+      color: this.tool.color,
+      width: this.tool.size / rect.width,
     };
-    this.lastPoint = this.activeStroke.points[0];
-    this.drawLiveDot(surface, layer, this.activeStroke.points[0], this.activeStroke, isErase);
+    const firstSegment = this.activeStroke.segments[0];
+    this.lastPoint = firstSegment.points[0];
+    this.drawLiveDot(surface, layer, firstSegment.points[0], this.activeStroke, isErase);
   }
 
   handlePointerMove(surface, event) {
@@ -1668,12 +1707,22 @@ export class DrawingModeController {
       return;
     }
 
-    const rawPressure = stroke.erase ? 1 : this.pressureFromEvent(event);
+    // 橡皮模式：橡皮工具、按住数位笔的橡皮键、或右键/中键拖动（可在一笔中途切换）
+    const eraseMode = this.tool.eraser
+      || this.isEraseButtonHeld(event)
+      || (Number(event.buttons ?? 0) & (2 | 4)) !== 0;
+    let segment = stroke.segments[stroke.segments.length - 1];
+    if (segment.erase !== eraseMode) {
+      segment = { erase: eraseMode, points: [this.lastPoint] };
+      stroke.segments.push(segment);
+    }
+
+    const rawPressure = segment.erase ? 1 : this.pressureFromEvent(event);
     // 压感指数平滑，抑制回报抖动
     this.pressureSmoothed = this.pressureSmoothed * 0.6 + rawPressure * 0.4;
-    stroke.points.push([point[0], point[1], this.pressureSmoothed]);
-    this.drawLiveSegment(surface, stroke.layer, this.lastPoint, stroke.points[stroke.points.length - 1], stroke, stroke.erase);
-    this.lastPoint = stroke.points[stroke.points.length - 1];
+    segment.points.push([point[0], point[1], this.pressureSmoothed]);
+    this.drawLiveSegment(surface, stroke.layer, this.lastPoint, segment.points[segment.points.length - 1], stroke, segment.erase);
+    this.lastPoint = segment.points[segment.points.length - 1];
   }
 
   handlePointerUp(surface, event) {
@@ -1697,14 +1746,20 @@ export class DrawingModeController {
       return;
     }
 
-    surface.recordAction({
-      type: stroke.erase ? "erase" : "draw",
-      stroke: {
-        points: stroke.points,
-        color: stroke.color,
-        width: stroke.width,
-      },
-    }, stroke.layer);
+    // 每段一个动作（画/擦分开记录，回放顺序与真实绘制一致）
+    for (const segment of stroke.segments) {
+      if (segment.points.length === 0) {
+        continue;
+      }
+      surface.recordAction({
+        type: segment.erase ? "erase" : "draw",
+        stroke: {
+          points: segment.points,
+          color: stroke.color,
+          width: stroke.width,
+        },
+      }, stroke.layer);
+    }
     this.renderAll();
     surface.scheduleSave();
   }
