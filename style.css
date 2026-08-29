@@ -697,14 +697,14 @@ button[data-tooltip]:hover::before {
     display: none;
 }
 
-/* 临摹模式：参考图与白色画布左右并排，各占一半 */
+/* 临摹模式：参考图与白色画布左右无缝并排，各占一半 */
 #image-display-area.copy-mode {
     flex-direction: row;
-    gap: 32px;
+    gap: 0;
 }
 
 #image-display-area.copy-mode #current-image {
-    max-width: calc(50% - 16px);
+    max-width: 50%;
 }
 
 #practice-stage {
@@ -859,6 +859,12 @@ button[data-tooltip]:hover::before {
     cursor: none; /* 用画笔圆环光标代替系统箭头 */
 }
 
+/* 油漆桶：自定义油漆桶图标光标（白填充黑描边，任何背景可见） */
+#annotation-canvas.active.tool-bucket,
+#image-display-area.draw-mode #practice-canvas.tool-bucket {
+    cursor: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path fill="white" stroke="black" stroke-width="1.2" d="M16.56 8.94L7.62 0 6.21 1.41l2.38 2.38-5.17 5.17c-.59.59-.59 1.54 0 2.12l5.5 5.5c.29.29.68.44 1.06.44s.77-.15 1.06-.44l5.5-5.5c.59-.58.59-1.53 0-2.12zM5.21 10L10 5.21 14.79 10H5.21zM19 11.5s-2 2.17-2 3.5c0 1.1.9 2 2 2s2-.9 2-2c0-1.33-2-3.5-2-3.5z"/></svg>') 5 19, crosshair;
+}
+
 /* 画笔圆环光标：直径=笔刷大小；difference 混合让单圈在任何背景上都高对比可见 */
 #brush-cursor {
     position: fixed;
@@ -997,11 +1003,11 @@ button[data-tooltip]:hover::before {
     justify-content: center;
 }
 
-/* 子面板：从按钮左侧弹出 */
+/* 子面板：从按钮左侧弹出（22px = 竖条面板内边距 10px + 间距 12px，确保完全避开面板） */
 .draw-popout {
     position: absolute;
     top: 50%;
-    right: calc(100% + 12px);
+    right: calc(100% + 22px);
     transform: translateY(-50%);
     z-index: 17;
     display: flex;
@@ -1045,14 +1051,17 @@ button[data-tooltip]:hover::before {
 
 .annotation-color-grid {
     display: grid;
-    grid-template-columns: repeat(3, 24px);
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 8px;
+    width: 100%;
+    min-width: 0;
 }
 
 .annotation-color-swatch {
-    width: 24px;
-    height: 24px;
-    border-radius: 50%;
+    width: auto;
+    min-width: 0;
+    aspect-ratio: 1;
+    border-radius: 8px;
     border: 1px solid var(--glass-border-color);
     padding: 0;
     cursor: pointer;
@@ -1094,6 +1103,187 @@ button[data-tooltip]:hover::before {
     color: var(--text-color);
     min-width: 2em;
     text-align: right;
+}
+
+/* HSL 选色器 */
+.color-popout {
+    width: 190px;
+}
+
+.color-preview-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.color-preview {
+    width: 26px;
+    height: 26px;
+    border-radius: 6px;
+    border: 1px solid var(--glass-border-color);
+    background: #FF4D4F;
+    flex-shrink: 0;
+}
+
+.color-hex {
+    font-size: 0.8em;
+    color: var(--text-color);
+    font-family: ui-monospace, monospace;
+}
+
+.hsl-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.hsl-label {
+    width: 12px;
+    font-size: 0.75em;
+    font-weight: bold;
+    color: var(--text-color);
+    text-align: center;
+}
+
+.hsl-row input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    flex: 1;
+    height: 10px;
+    border-radius: 5px;
+    border: 1px solid rgba(0, 0, 0, 0.15);
+    padding: 0;
+}
+
+.hsl-row input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #FFFFFF;
+    border: 1px solid rgba(0, 0, 0, 0.45);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+#colorHueSlider {
+    background: linear-gradient(to right, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000);
+}
+
+/* 图层面板 */
+.layer-popout {
+    width: 235px;
+}
+
+.layer-surface-toggle {
+    display: flex;
+    gap: 6px;
+}
+
+.layer-surface-toggle button {
+    flex: 1;
+    height: 28px;
+    border-radius: 8px;
+    border: 1px solid var(--glass-border-color);
+    background: var(--button-toggle-bg);
+    color: var(--text-color);
+    font-size: 0.8em;
+    padding: 0;
+    cursor: pointer;
+    -webkit-app-region: no-drag;
+}
+
+.layer-surface-toggle button.active {
+    background: linear-gradient(135deg, var(--button-toggle-active-start), var(--button-toggle-active-end));
+    border-color: transparent;
+}
+
+.layer-surface-toggle button:hover:not(.active) {
+    background: var(--button-toggle-hover-bg);
+}
+
+.layer-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 280px;
+    overflow-y: auto;
+}
+
+.layer-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    cursor: pointer;
+}
+
+.layer-row.active {
+    background: var(--button-toggle-hover-bg);
+    border-color: var(--glass-border-color);
+}
+
+.layer-row.locked {
+    cursor: default;
+}
+
+.layer-name {
+    flex: 1;
+    font-size: 0.82em;
+    color: var(--text-color);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.layer-row.active .layer-name {
+    font-weight: bold;
+}
+
+.layer-opacity {
+    width: 82px;
+    accent-color: var(--button-toggle-active-start, #4CAF50);
+}
+
+.layer-locked-hint {
+    font-size: 0.75em;
+    color: var(--text-color);
+    opacity: 0.6;
+}
+
+.layer-panel-actions {
+    display: flex;
+    gap: 6px;
+    justify-content: center;
+    padding-top: 8px;
+    border-top: 1px solid var(--glass-border-color);
+}
+
+.layer-panel-actions button {
+    width: 40px;
+    height: 30px;
+    border-radius: 8px;
+    border: 1px solid var(--glass-border-color);
+    background: var(--button-toggle-bg);
+    color: var(--text-color);
+    font-size: 0.95em;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    cursor: pointer;
+    -webkit-app-region: no-drag;
+}
+
+.layer-panel-actions button:hover {
+    background: var(--button-toggle-hover-bg);
+}
+
+.layer-panel-actions button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
 }
 
 /* Image effects */

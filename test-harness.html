@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>drawing-mode harness</title>
+    <link rel="stylesheet" href="/style.css">
+    <style>
+        body { margin: 0; background: #888; font-family: monospace; }
+        #image-display-area { position: relative; width: 800px; height: 600px; display: flex; justify-content: center; align-items: center; overflow: hidden; }
+        #image-backdrop { position: absolute; top: 0; left: 0; background: #fff; pointer-events: none; }
+        #current-image { position: relative; z-index: 1; max-width: 100%; max-height: 100%; width: auto; height: auto; pointer-events: none; }
+        #grid-canvas { position: absolute; top: 0; left: 0; z-index: 2; pointer-events: none; }
+        #annotation-canvas { position: absolute; top: 0; left: 0; z-index: 3; pointer-events: none; touch-action: none; }
+        #annotation-canvas.active { pointer-events: auto; cursor: none; }
+        #practice-stage { position: relative; display: none; flex: none; background: #fff; }
+        #image-display-area.copy-mode #practice-stage { display: block; }
+        #practice-grid-canvas, #practice-canvas { position: absolute; top: 0; left: 0; pointer-events: none; }
+        #practice-canvas.active { pointer-events: auto; }
+        #brush-cursor { position: fixed; left: 0; top: 0; z-index: 30; pointer-events: none; display: none; border: 1px solid #fff; mix-blend-mode: difference; border-radius: 50%; }
+        #drawing-controls { position: absolute; top: 66px; right: 20px; display: none; }
+        #drawing-controls.visible { display: flex; flex-direction: column; gap: 8px; padding: 10px; }
+        #strip-toggle { position: absolute; display: none; }
+        #result { white-space: pre-wrap; background: #000; color: #0f0; padding: 12px; margin-top: 620px; min-height: 200px; }
+    </style>
+    <script>
+        // Tauri API 桩：让模块可以导入并绑定事件
+        window.__errors = [];
+        window.addEventListener("error", (event) => {
+            window.__errors.push(String(event.error || event.message));
+            const result = document.getElementById("result");
+            if (result) { result.textContent += "\n[window.error] " + String(event.error || event.message); }
+        });
+        window.__TAURI_INTERNALS__ = {
+            transformCallback: (callback) => callback,
+            invoke: async (cmd) => {
+                if (cmd === "plugin:event|listen") { return 1; }
+                return {};
+            },
+            metadata: { currentWindow: { label: "main" }, currentWebview: { label: "main" } },
+        };
+    </script>
+</head>
+<body>
+    <div id="image-display-area">
+        <div id="image-backdrop"></div>
+        <img id="current-image" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAAFUlEQVR42mP8z8BQz4AFMElmBAAAmf8Pk6bEFAAAAABJRU5ErkJggg==">
+        <div id="practice-stage">
+            <canvas id="practice-grid-canvas"></canvas>
+            <canvas id="practice-canvas"></canvas>
+        </div>
+        <canvas id="grid-canvas"></canvas>
+        <canvas id="annotation-canvas"></canvas>
+        <div id="brush-cursor"></div>
+        <button id="strip-toggle">▴</button>
+        <button id="drawModeToggle" class="toggle">M</button>
+            <!-- 画笔模式竖条菜单（随右缘悬停隐显，替代原菜单） -->
+            <div id="drawing-controls" class="glassmorphism">
+                <button id="drawPenTool" class="toggle active" data-i18n-title="drawMode" data-tooltip="画笔">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
+                    </svg>
+                </button>
+                <button id="drawEraserTool" class="toggle" data-i18n-title="eraser" data-tooltip="橡皮擦">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M7.5 21.5l-4-4a2.4 2.4 0 0 1 0-3.4L13.1 4.5a2.4 2.4 0 0 1 3.4 0l4 4a2.4 2.4 0 0 1 0 3.4L10.9 21.5a2.4 2.4 0 0 1-3.4 0zM6.2 15.5l3.3 3.3 8.6-8.6-3.3-3.3-8.6 8.6z"/>
+                    </svg>
+                </button>
+                <button id="drawBucketTool" class="toggle" data-i18n-title="bucket" data-tooltip="油漆桶">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M16.56 8.94L7.62 0 6.21 1.41l2.38 2.38-5.17 5.17c-.59.59-.59 1.54 0 2.12l5.5 5.5c.29.29.68.44 1.06.44s.77-.15 1.06-.44l5.5-5.5c.59-.58.59-1.53 0-2.12zM5.21 10L10 5.21 14.79 10H5.21zM19 11.5s-2 2.17-2 3.5c0 1.1.9 2 2 2s2-.9 2-2c0-1.33-2-3.5-2-3.5z"/>
+                    </svg>
+                </button>
+                <div class="draw-tool-slot" id="drawColorSlot">
+                    <button id="drawColorTool" class="toggle" data-i18n-title="brushColor" data-tooltip="颜色">
+                        <span id="drawColorIndicator" class="color-indicator"></span>
+                    </button>
+                    <div id="drawColorPopout" class="draw-popout glassmorphism color-popout">
+                        <div class="annotation-color-grid">
+                            <button type="button" class="annotation-color-swatch active" data-color="#FF4D4F" style="background:#FF4D4F" title="#FF4D4F"></button>
+                            <button type="button" class="annotation-color-swatch" data-color="#FF9F43" style="background:#FF9F43" title="#FF9F43"></button>
+                            <button type="button" class="annotation-color-swatch" data-color="#FFD83D" style="background:#FFD83D" title="#FFD83D"></button>
+                            <button type="button" class="annotation-color-swatch" data-color="#22C55E" style="background:#22C55E" title="#22C55E"></button>
+                            <button type="button" class="annotation-color-swatch" data-color="#3B82F6" style="background:#3B82F6" title="#3B82F6"></button>
+                            <button type="button" class="annotation-color-swatch" data-color="#A855F7" style="background:#A855F7" title="#A855F7"></button>
+                            <button type="button" class="annotation-color-swatch" data-color="#FFFFFF" style="background:#FFFFFF" title="#FFFFFF"></button>
+                            <button type="button" class="annotation-color-swatch" data-color="#111111" style="background:#111111" title="#111111"></button>
+                        </div>
+                        <div class="color-preview-row">
+                            <span id="drawColorPreview" class="color-preview"></span>
+                            <span id="drawColorHex" class="color-hex">#FF4D4F</span>
+                        </div>
+                        <div class="hsl-row">
+                            <span class="hsl-label">H</span>
+                            <input type="range" id="colorHueSlider" min="0" max="360" value="0">
+                        </div>
+                        <div class="hsl-row">
+                            <span class="hsl-label">S</span>
+                            <input type="range" id="colorSatSlider" min="0" max="100" value="100">
+                        </div>
+                        <div class="hsl-row">
+                            <span class="hsl-label">L</span>
+                            <input type="range" id="colorLightSlider" min="0" max="100" value="65">
+                        </div>
+                    </div>
+                </div>
+                <div class="draw-tool-slot" id="drawSizeSlot">
+                    <button id="drawSizeTool" class="toggle" data-i18n-title="brushSize" data-tooltip="笔刷大小">
+                        <span class="size-indicator"><span id="drawSizeIndicatorDot" class="size-indicator-dot" style="width:4px;height:4px"></span></span>
+                    </button>
+                    <div id="drawSizePopout" class="draw-popout glassmorphism">
+                        <div class="opacity-row-header">
+                            <span class="opacity-label" data-i18n="brushSize">笔刷大小</span>
+                            <span id="drawSizeValue">4</span>
+                        </div>
+                        <input type="range" id="drawSizeSlider" min="1" max="30" step="1" value="4">
+                    </div>
+                </div>
+                <button id="drawUndoTool" class="toggle" data-i18n-title="undo" data-tooltip="撤销">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z"/>
+                    </svg>
+                </button>
+                <button id="drawClearTool" class="toggle" data-i18n-title="clearNotes" data-tooltip="清空笔记">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
+                    </svg>
+                </button>
+                <div class="draw-tool-slot" id="drawLayerSlot">
+                    <button id="drawLayerTool" class="toggle" data-i18n-title="layers" data-tooltip="图层">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M11.99 18.54l-7.37-5.73L3 14.07l9 7 9-7-1.62-1.27-7.39 5.73zM12 16l7.36-5.73L21 9l-9-7-9 7 1.63 1.27L12 16z"/>
+                        </svg>
+                    </button>
+                    <div id="drawLayerPopout" class="draw-popout glassmorphism layer-popout">
+                        <div class="layer-surface-toggle" id="layerSurfaceToggle">
+                            <button id="layerSurfaceReference" data-i18n="referenceLayer" data-i18n-title="referenceLayer" data-tooltip="参考图">参考图</button>
+                            <button id="layerSurfacePractice" data-i18n="copyMode" data-i18n-title="copyMode" data-tooltip="临摹">临摹</button>
+                        </div>
+                        <div id="layerList" class="layer-list"></div>
+                        <div class="layer-panel-actions">
+                            <button id="layerAddButton" data-i18n-title="layerAdd" data-tooltip="新建图层">＋</button>
+                            <button id="layerDeleteButton" data-i18n-title="layerDelete" data-tooltip="删除图层">−</button>
+                            <button id="layerUpButton" data-i18n-title="layerUp" data-tooltip="上移">↑</button>
+                            <button id="layerDownButton" data-i18n-title="layerDown" data-tooltip="下移">↓</button>
+                        </div>
+                    </div>
+                </div>
+                <button id="drawCopyTool" class="toggle" data-i18n-title="copyMode" data-tooltip="临摹">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h10v14z"/>
+                    </svg>
+                </button>
+                <button id="drawExitTool" class="primary" data-i18n-title="exitDraw" data-tooltip="退出画笔">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <!-- 文件夹浏览器视图 -->
+        <div id="folder-browser-view" class="glassmorphism">
+            <!-- New: Close button for folder browser -->
+            <button class="close-button" id="closeFolderBrowserButton">&times;</button>
+            <!-- New: Folder browser header -->
+            <div class="folder-browser-header">
+                <h1 data-i18n="imageLibrary">图片库</h1>
+                <div id="current-library-path"></div>
+                <div class="folder-browser-header-buttons">
+                    <button id="libraryFilterMarkedToggle" class="toggle" data-i18n-title="filterMarked" data-tooltip="过滤已标记">
+                        <span class="mark-icon">&#x2022;</span> <!-- Solid circle icon for consistency -->
+                    </button>
+                    <button id="goUpFolderButton" class="toggle" data-i18n="goBack">
+                        <span style="font-size: 1.2em; margin-right: 5px;">⬆</span>返回上级
+                    </button>
+                </div>
+            </div>
+    </div>
+    <pre id="result"></pre>
+    <script type="module">
+        const log = (message) => {
+            document.getElementById("result").textContent += message + "\n";
+        };
+
+        async function main() {
+            const image = document.getElementById("current-image");
+            await new Promise((resolve, reject) => {
+                if (image.complete && image.naturalWidth > 0) { resolve(); return; }
+                image.onload = resolve;
+                image.onerror = () => reject(new Error("image failed to load"));
+            });
+            log("image loaded: " + image.naturalWidth + "x" + image.naturalHeight);
+
+            const { DrawingModeController } = await import("/src/drawing-mode.js");
+            const host = {
+                state: {
+                    isMirrorEnabled: false,
+                    isGridEnabled: false,
+                    currentGridColorHex: "#FFFFFF",
+                    imageFiles: [{ originalPath: "/tmp/harness.png", path: "asset://harness" }],
+                    currentImageIndex: 0,
+                },
+                isPlaybackVisible: () => true,
+                paintGridLines: () => {},
+                scheduleGridRedraw: () => {},
+            };
+            const controller = new DrawingModeController(host);
+            controller.bindEvents();
+            log("bindEvents ok");
+
+            controller.setDrawModeEnabled(true);
+            log("draw mode: " + controller.isDrawModeEnabled + ", canvas.active=" +
+                document.getElementById("annotation-canvas").classList.contains("active"));
+
+            controller.renderAll();
+            log("renderAll ok, layers=" + controller.referenceSurface.layers.length +
+                ", activeLayer=" + (controller.referenceSurface.activeLayer()?.name ?? "null"));
+
+            const canvas = document.getElementById("annotation-canvas");
+            const rect = canvas.getBoundingClientRect();
+            log("canvas rect: " + Math.round(rect.width) + "x" + Math.round(rect.height) +
+                " @ " + Math.round(rect.left) + "," + Math.round(rect.top) +
+                " pointerEvents=" + getComputedStyle(canvas).pointerEvents);
+
+            const dispatch = (type, x, y) => {
+                canvas.dispatchEvent(new PointerEvent(type, {
+                    clientX: x, clientY: y, button: 0, buttons: 1,
+                    pointerId: 7, pointerType: "mouse", bubbles: true, cancelable: true,
+                }));
+            };
+            const cx = rect.left + rect.width / 2;
+            const cy = rect.top + rect.height / 2;
+            dispatch("pointerdown", cx, cy);
+            for (let i = 1; i <= 5; i += 1) { dispatch("pointermove", cx + i * 10, cy + i * 5); }
+            dispatch("pointerup", cx + 50, cy + 25);
+
+            const surface = controller.referenceSurface;
+            const layer = surface.layers[0];
+            log("strokes recorded: " + layer.actions.length);
+            if (layer.actions.length > 0) {
+                const action = layer.actions[0];
+                log("action type=" + action.type + ", points=" + (action.stroke?.points?.length ?? 0));
+            }
+
+            // 渲染检查：可见画布应有非透明像素
+            const visibleCtx = canvas.getContext("2d");
+            const pixels = visibleCtx.getImageData(0, 0, canvas.width, canvas.height).data;
+            let opaque = 0;
+            for (let i = 3; i < pixels.length; i += 4) { if (pixels[i] > 0) opaque += 1; }
+            log("opaque pixels on visible canvas: " + opaque);
+
+            // 油漆桶
+            controller.selectBucketTool();
+            dispatch("pointerdown", cx + 100, cy + 100);
+            dispatch("pointerup", cx + 100, cy + 100);
+            log("after fill actions=" + layer.actions.length + ", types=" + layer.actions.map((a) => a.type).join(","));
+
+            // 图层操作
+            surface.addLayer();
+            log("layers after add: " + surface.layers.length + ", active=" + surface.activeLayer().name);
+            surface.moveActiveLayer(1);
+            surface.deleteActiveLayer();
+            log("layers after move+delete: " + surface.layers.length);
+
+            // 面板切换参考面 / 临摹面
+            controller.setCopyModeEnabled(true);
+            controller.renderLayerPanel();
+            controller.setActiveSurface(controller.practiceSurface);
+            const refBtnActive = document.getElementById("layerSurfaceReference").classList.contains("active");
+            const practiceBtnActive = document.getElementById("layerSurfacePractice").classList.contains("active");
+            log("surface toggle: refBtn=" + refBtnActive + ", practiceBtn=" + practiceBtnActive +
+                ", activeSurfaceIsPractice=" + (controller.activeSurface === controller.practiceSurface));
+            controller.setCopyModeEnabled(false);
+
+            // 弹出面板定位：与竖条面板不应重叠
+            controller.togglePopout("color");
+            const popoutRect = document.getElementById("drawColorPopout").getBoundingClientRect();
+            const stripRect = document.getElementById("drawing-controls").getBoundingClientRect();
+            const gridRect = document.querySelector("#drawColorPopout .annotation-color-grid").getBoundingClientRect();
+            log("grid inside popout: " + (gridRect.right <= popoutRect.right + 1 ? "yes" : "OVERFLOW " + Math.round(gridRect.right - popoutRect.right) + "px"));
+            log("popout width=" + Math.round(popoutRect.width) +
+                ", gap to strip=" + Math.round(stripRect.left - popoutRect.right) + "px" +
+                (popoutRect.right <= stripRect.left ? " [no overlap]" : " [OVERLAPS STRIP]"));
+            controller.closePopouts();
+
+            // 非临摹模式：切换按钮隐藏，面板只显示参考图图层
+            controller.renderLayerPanel();
+            const toggleHidden = document.getElementById("layerSurfaceToggle").style.display === "none";
+            const lockedRows = document.querySelectorAll("#layerList .layer-row.locked").length;
+            const userRows = document.querySelectorAll("#layerList .layer-row:not(.locked)").length;
+            log("non-copy mode: toggleHidden=" + toggleHidden + ", referenceUserRows=" + userRows + ", lockedRows=" + lockedRows);
+
+            // 撤销
+            surface.undo();
+            log("after undo actions=" + layer.actions.length + ", history=" + surface.undoStack.length);
+
+            log("ALL DONE" + (window.__errors.length ? " (errors: " + window.__errors.join(" | ") + ")" : " (no window errors)"));
+        }
+
+        main().catch((error) => {
+            log("HARNESS FAILED: " + (error && error.stack ? error.stack : String(error)));
+        });
+    </script>
+</body>
+</html>

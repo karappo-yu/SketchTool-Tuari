@@ -6,31 +6,39 @@ import { t } from "./i18n.js";
 const ANNOTATION_OFFSCREEN_MAX_WIDTH = 2560;
 const ANNOTATION_SIZE_MIN = 1;
 const ANNOTATION_SIZE_MAX = 30;
+const FILL_TOLERANCE = 32;
 const STRIP_HIDE_DELAY_MS = 500;
 const STRIP_REVEAL_EDGE_PX = 90;
 
 const byId = (id) => document.getElementById(id);
 
 /**
- * 笔画动作数据格式（v2，按图片路径持久化于 SQLite）：
- *   { version: 2, actions: [
- *       { type: "draw"|"erase", stroke: { points: [[x, y, pressure?], ...], color, width } }
+ * 笔画动作数据格式（v3，按图片路径持久化于 SQLite）：
+ *   { version: 3, layers: [
+ *       { id, name, opacity, actions: [
+ *           { type: "draw"|"erase", stroke: { points: [[x, y, pressure?], ...], color, width } }
+ *           { type: "fill", point: [x, y], color }
+ *           { type: "clear" }
+ *       ] }
  *   ] }
  * 点坐标为 0..1 归一化值，pressure 可省略（旧数据，按恒定线宽渲染）。
+ * v2（单层 actions）与 v1（纯笔画数组）加载时自动迁移为单图层。
  */
-function normalizeAnnotationActions(payload) {
-  let actions = [];
-  if (Array.isArray(payload)) {
-    // v1 旧格式：纯笔画数组，迁移为 draw 动作
-    actions = payload.map((stroke) => ({ type: "draw", stroke }));
-  } else if (Array.isArray(payload?.actions)) {
-    actions = payload.actions;
-  } else if (Array.isArray(payload?.strokes)) {
-    actions = payload.strokes.map((stroke) => ({ type: "draw", stroke }));
+function normalizeAnnotationActions(actions) {
+  if (!Array.isArray(actions)) {
+    return [];
   }
-
   return actions.filter((action) => {
-    if (!action || (action.type !== "draw" && action.type !== "erase")) {
+    if (!action) {
+      return false;
+    }
+    if (action.type === "clear") {
+      return true;
+    }
+    if (action.type === "fill") {
+      return Array.isArray(action.point) && action.point.length >= 2;
+    }
+    if (action.type !== "draw" && action.type !== "erase") {
       return false;
     }
     const stroke = action.stroke;
@@ -38,7 +46,187 @@ function normalizeAnnotationActions(payload) {
   });
 }
 
+function escapeHtml(text) {
+  return String(text).replace(/[&<>"']/g, (ch) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  }[ch]));
+}
+
+function hexToRgbBytes(hex) {
+  const value = String(hex || "").replace("#", "");
+  const full = value.length === 3 ? value.split("").map((ch) => ch + ch).join("") : value;
+  const int = parseInt(full, 16);
+  if (Number.isNaN(int)) {
+    return [255, 77, 79, 255];
+  }
+  return [(int >> 16) & 255, (int >> 8) & 255, int & 255, 255];
+}
+
+function hslToHex(h, s, l) {
+  const sat = Math.min(100, Math.max(0, s)) / 100;
+  const light = Math.min(100, Math.max(0, l)) / 100;
+  const hue = ((Number(h) || 0) % 360 + 360) % 360;
+  const k = (n) => (n + hue / 30) % 12;
+  const a = sat * Math.min(light, 1 - light);
+  const f = (n) => light - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+  const to255 = (x) => Math.round(255 * x).toString(16).padStart(2, "0");
+  return `#${to255(f(0))}${to255(f(8))}${to255(f(4))}`.toUpperCase();
+}
+
+function hexToHsl(hex) {
+  const [r, g, b] = hexToRgbBytes(hex).map((v) => v / 255);
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const light = (max + min) / 2;
+  let h = 0;
+  let s = 0;
+  if (max !== min) {
+    const d = max - min;
+    s = light > 0.5 ? d / (2 - max - min) : d / (max + min);
+    if (max === r) {
+      h = (g - b) / d + (g < b ? 6 : 0);
+    } else if (max === g) {
+      h = (b - r) / d + 2;
+    } else {
+      h = (r - g) / d + 4;
+    }
+    h = Math.round(h * 60);
+  }
+  return { h, s: Math.round(s * 100), l: Math.round(light * 100) };
+}
+
+/** 扫描线洪泛填充（油漆桶）：以起点颜色为基准，容差内的连续区域填充为目标色 */
+function floodFill(ctx, scaleX, scaleY, point, hexColor) {
+  const canvas = ctx.canvas;
+  const width = canvas.width;
+  const height = canvas.height;
+  if (width <= 0 || height <= 0) {
+    return;
+  }
+  const startX = Math.min(width - 1, Math.max(0, Math.floor(point[0] * scaleX)));
+  const startY = Math.min(height - 1, Math.max(0, Math.floor(point[1] * scaleY)));
+
+  const image = ctx.getImageData(0, 0, width, height);
+  const data = image.data;
+  const fill = hexToRgbBytes(hexColor);
+  const startIndex = (startY * width + startX) * 4;
+  const target = [data[startIndex], data[startIndex + 1], data[startIndex + 2], data[startIndex + 3]];
+
+  if (Math.abs(target[0] - fill[0]) <= FILL_TOLERANCE
+    && Math.abs(target[1] - fill[1]) <= FILL_TOLERANCE
+    && Math.abs(target[2] - fill[2]) <= FILL_TOLERANCE
+    && Math.abs(target[3] - fill[3]) <= FILL_TOLERANCE) {
+    return; // 起点已是目标色
+  }
+
+  const matches = (index) => {
+    const i = index * 4;
+    return Math.abs(data[i] - target[0]) <= FILL_TOLERANCE
+      && Math.abs(data[i + 1] - target[1]) <= FILL_TOLERANCE
+      && Math.abs(data[i + 2] - target[2]) <= FILL_TOLERANCE
+      && Math.abs(data[i + 3] - target[3]) <= FILL_TOLERANCE;
+  };
+
+  if (!matches(startY * width + startX)) {
+    return;
+  }
+
+  const visited = new Uint8Array(width * height);
+  const stack = [[startX, startY]];
+  while (stack.length > 0) {
+    const [x, y] = stack.pop();
+
+    let left = x;
+    while (left >= 0) {
+      const idx = y * width + left;
+      if (visited[idx] || !matches(idx)) {
+        break;
+      }
+      left -= 1;
+    }
+    left += 1;
+
+    let right = x;
+    while (right < width) {
+      const idx = y * width + right;
+      if (visited[idx] || !matches(idx)) {
+        break;
+      }
+      right += 1;
+    }
+    right -= 1;
+
+    for (let i = left; i <= right; i += 1) {
+      const idx = y * width + i;
+      visited[idx] = 1;
+      const p = idx * 4;
+      data[p] = fill[0];
+      data[p + 1] = fill[1];
+      data[p + 2] = fill[2];
+      data[p + 3] = 255;
+    }
+
+    for (const ny of [y - 1, y + 1]) {
+      if (ny < 0 || ny >= height) {
+        continue;
+      }
+      let inSpan = false;
+      for (let i = left; i <= right; i += 1) {
+        const idx = ny * width + i;
+        const ok = !visited[idx] && matches(idx);
+        if (ok && !inSpan) {
+          stack.push([i, ny]);
+          inSpan = true;
+        } else if (!ok) {
+          inSpan = false;
+        }
+      }
+    }
+  }
+
+  // 边缘外扩 1 像素：吞掉抗锯齿过渡像素，避免填充与轮廓之间留白缝
+  const grown = [];
+  for (let y = 0; y < height; y += 1) {
+    const rowOffset = y * width;
+    for (let x = 0; x < width; x += 1) {
+      const idx = rowOffset + x;
+      if (visited[idx]) {
+        continue;
+      }
+      if (
+        (x > 0 && visited[idx - 1])
+        || (x < width - 1 && visited[idx + 1])
+        || (y > 0 && visited[idx - width])
+        || (y < height - 1 && visited[idx + width])
+      ) {
+        grown.push(idx);
+      }
+    }
+  }
+  for (const idx of grown) {
+    const p = idx * 4;
+    data[p] = fill[0];
+    data[p + 1] = fill[1];
+    data[p + 2] = fill[2];
+    data[p + 3] = 255;
+  }
+  ctx.putImageData(image, 0, 0);
+}
+
 function applyAction(ctx, action, scaleX, scaleY) {
+  if (action.type === "clear") {
+    ctx.clearRect(0, 0, scaleX, scaleY);
+    return;
+  }
+  if (action.type === "fill") {
+    floodFill(ctx, scaleX, scaleY, action.point || [0.5, 0.5], action.color || "#FF4D4F");
+    return;
+  }
+
   const stroke = action.stroke || {};
   const points = stroke.points || [];
   if (points.length === 0) {
@@ -83,25 +271,50 @@ function applyAction(ctx, action, scaleX, scaleY) {
 }
 
 /**
- * 一个可作画的注释画面：离屏缓冲 + 动作回放渲染 + 独立的撤销/重做与持久化。
- * 临摹模式下存在两个实例：参考图注释面（reference）与白色临摹画布面（practice）。
- * layout/mirror/resolution/saveKey 由控制器注入。
+ * 一个可作画的画面：多个图层（各自位图与透明度）、动作回放渲染、
+ * 独立的撤销/重做与持久化。临摹模式下有两个实例：
+ * 参考图注释面（reference，最底层为参考图）与白色临摹画布面（practice，最底层为白色画布）。
+ * layout/mirror/resolution/saveKey/newLayerName 由控制器注入。
  */
 class AnnotationSurface {
-  constructor({ canvas, layout, mirror, resolution, saveKey, onChanged }) {
+  constructor({ canvas, layout, mirror, resolution, saveKey, newLayerName, onChanged }) {
     this.canvas = canvas;
     this.ctx = canvas ? canvas.getContext("2d") : null;
     this.layoutFn = layout;
     this.mirrorFn = mirror;
     this.resolutionFn = resolution;
     this.saveKeyFn = saveKey;
+    this.newLayerNameFn = newLayerName;
     this.onChanged = onChanged;
-    this.actions = [];
+    this.layers = [];
+    this.activeLayerId = null;
+    this.layerIdCounter = 0;
     this.undoStack = [];
     this.redoStack = [];
     this.offscreen = null;
     this.loadToken = 0;
     this.saveTimer = null;
+  }
+
+  makeLayer() {
+    this.layerIdCounter += 1;
+    return {
+      id: this.layerIdCounter,
+      name: this.newLayerNameFn(this.layerIdCounter),
+      opacity: 1,
+      actions: [],
+      bitmap: null,
+      dirty: true,
+    };
+  }
+
+  activeLayer() {
+    return this.layers.find((layer) => layer.id === this.activeLayerId) || null;
+  }
+
+  invalidate() {
+    this.loadToken += 1;
+    this.resetRuntime();
   }
 
   ensureOffscreen() {
@@ -147,17 +360,45 @@ class AnnotationSurface {
     return layout;
   }
 
+  /** 取图层位图（懒创建，脏时从动作重放重建） */
+  layerBitmap(layer, resolution) {
+    if (!layer.bitmap || layer.bitmap.width !== resolution.width || layer.bitmap.height !== resolution.height) {
+      layer.bitmap = document.createElement("canvas");
+      layer.bitmap.width = resolution.width;
+      layer.bitmap.height = resolution.height;
+      layer.dirty = true;
+    }
+    if (layer.dirty) {
+      const ctx = layer.bitmap.getContext("2d");
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, resolution.width, resolution.height);
+      for (const action of layer.actions) {
+        applyAction(ctx, action, resolution.width, resolution.height);
+      }
+      layer.dirty = false;
+    }
+    return layer.bitmap;
+  }
+
+  /** 合成：图层自底向上按各自透明度叠加 */
   replay() {
     const offscreen = this.ensureOffscreen();
     if (!offscreen) {
       return;
     }
+    const resolution = this.resolutionFn();
+    if (!resolution) {
+      return;
+    }
     const ctx = offscreen.getContext("2d");
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, offscreen.width, offscreen.height);
-    for (const action of this.actions) {
-      applyAction(ctx, action, offscreen.width, offscreen.height);
+    for (const layer of this.layers) {
+      const bitmap = this.layerBitmap(layer, resolution);
+      ctx.globalAlpha = layer.opacity;
+      ctx.drawImage(bitmap, 0, 0);
     }
+    ctx.globalAlpha = 1;
   }
 
   blit() {
@@ -211,9 +452,12 @@ class AnnotationSurface {
   }
 
   resetRuntime() {
-    this.actions = [];
-    this.undoStack = [];
-    this.redoStack = [];
+    for (const layer of this.layers) {
+      layer.bitmap = null;
+    }
+    const layer = this.makeLayer();
+    this.layers = [layer];
+    this.activeLayerId = layer.id;
     this.offscreen = null;
     this.clearVisible();
   }
@@ -223,20 +467,32 @@ class AnnotationSurface {
     this.resetRuntime();
   }
 
+  serialize() {
+    return {
+      version: 3,
+      layers: this.layers.map((layer) => ({
+        id: layer.id,
+        name: layer.name,
+        opacity: layer.opacity,
+        actions: layer.actions,
+      })),
+    };
+  }
+
   scheduleSave() {
     if (this.saveTimer !== null) {
       clearTimeout(this.saveTimer);
     }
 
     const saveKey = this.saveKeyFn();
-    const actionsSnapshot = this.actions;
+    const snapshot = this.serialize();
     if (!saveKey) {
       return;
     }
 
     this.saveTimer = window.setTimeout(() => {
       this.saveTimer = null;
-      desktop.saveImageAnnotations(saveKey, { version: 2, actions: actionsSnapshot }).catch((error) => {
+      desktop.saveImageAnnotations(saveKey, snapshot).catch((error) => {
         console.error("Failed to save image annotations:", error);
       });
     }, 500);
@@ -257,7 +513,30 @@ class AnnotationSurface {
       if (this.loadToken !== token) {
         return;
       }
-      this.actions = normalizeAnnotationActions(payload);
+
+      if (payload && Array.isArray(payload.layers) && payload.layers.length > 0) {
+        // v3：多图层
+        this.layers = payload.layers.map((data) => {
+          const layer = this.makeLayer();
+          if (Number.isInteger(data.id) && data.id > 0) {
+            layer.id = data.id;
+          }
+          if (typeof data.name === "string" && data.name) {
+            layer.name = data.name;
+          }
+          const opacity = Number(data.opacity);
+          layer.opacity = Number.isFinite(opacity) ? Math.min(1, Math.max(0, opacity)) : 1;
+          layer.actions = normalizeAnnotationActions(data.actions);
+          layer.dirty = true;
+          return layer;
+        });
+        this.layerIdCounter = Math.max(...this.layers.map((layer) => layer.id), 0);
+        this.activeLayerId = this.layers[this.layers.length - 1].id;
+      } else {
+        // v2 / v1：迁移为单图层
+        this.layers[0].actions = normalizeAnnotationActions(Array.isArray(payload) ? payload : payload?.actions);
+        this.layers[0].dirty = true;
+      }
       this.onChanged();
     } catch (error) {
       console.error("Failed to load image annotations:", error);
@@ -272,18 +551,29 @@ class AnnotationSurface {
     this.redoStack.length = 0;
   }
 
-  recordAction(action) {
-    this.actions.push(action);
+  recordAction(action, layer) {
+    layer.actions.push(action);
+    const layerId = layer.id;
     this.pushHistory({
       undo: () => {
-        const index = this.actions.indexOf(action);
-        if (index >= 0) {
-          this.actions.splice(index, 1);
+        const target = this.layers.find((item) => item.id === layerId);
+        if (!target) {
+          return;
         }
+        const index = target.actions.indexOf(action);
+        if (index >= 0) {
+          target.actions.splice(index, 1);
+        }
+        target.dirty = true;
       },
       redo: () => {
-        if (!this.actions.includes(action)) {
-          this.actions.push(action);
+        const target = this.layers.find((item) => item.id === layerId);
+        if (!target) {
+          return;
+        }
+        if (!target.actions.includes(action)) {
+          target.actions.push(action);
+          target.dirty = true;
         }
       },
     });
@@ -314,27 +604,89 @@ class AnnotationSurface {
     this.scheduleSave();
   }
 
-  clearAll() {
-    if (this.actions.length === 0) {
+  clearActiveLayer() {
+    const layer = this.activeLayer();
+    if (!layer || layer.actions.length === 0) {
       return;
     }
-    const previousActions = this.actions;
-    this.actions = [];
+    const clearAction = { type: "clear" };
+    layer.actions.push(clearAction);
+    layer.dirty = true;
+    const layerId = layer.id;
     this.pushHistory({
       undo: () => {
-        this.actions = previousActions;
+        const target = this.layers.find((item) => item.id === layerId);
+        if (!target) {
+          return;
+        }
+        const index = target.actions.indexOf(clearAction);
+        if (index >= 0) {
+          target.actions.splice(index, 1);
+        }
+        target.dirty = true;
       },
       redo: () => {
-        this.actions = [];
+        const target = this.layers.find((item) => item.id === layerId);
+        if (!target) {
+          return;
+        }
+        if (!target.actions.includes(clearAction)) {
+          target.actions.push(clearAction);
+          target.dirty = true;
+        }
       },
     });
+    this.onChanged();
+    this.scheduleSave();
+  }
+
+  addLayer() {
+    const layer = this.makeLayer();
+    this.layers.push(layer);
+    this.activeLayerId = layer.id;
+    this.onChanged();
+    this.scheduleSave();
+  }
+
+  deleteActiveLayer() {
+    if (this.layers.length <= 1) {
+      return;
+    }
+    const index = this.layers.findIndex((layer) => layer.id === this.activeLayerId);
+    if (index === -1) {
+      return;
+    }
+    this.layers.splice(index, 1);
+    this.activeLayerId = this.layers[Math.min(index, this.layers.length - 1)].id;
+    this.onChanged();
+    this.scheduleSave();
+  }
+
+  moveActiveLayer(delta) {
+    const index = this.layers.findIndex((layer) => layer.id === this.activeLayerId);
+    const target = index + delta;
+    if (index === -1 || target < 0 || target >= this.layers.length) {
+      return;
+    }
+    const [layer] = this.layers.splice(index, 1);
+    this.layers.splice(target, 0, layer);
+    this.onChanged();
+    this.scheduleSave();
+  }
+
+  setLayerOpacity(percent) {
+    const layer = this.activeLayer();
+    if (!layer) {
+      return;
+    }
+    layer.opacity = Math.min(1, Math.max(0, (Number(percent) || 0) / 100));
     this.onChanged();
     this.scheduleSave();
   }
 }
 
 /**
- * 画笔模式控制器：参考图上的笔记画板（画笔 / 像素橡皮 / 撤销重做 / 持久化）、
+ * 画笔模式控制器：参考图上的笔记画板（画笔 / 像素橡皮 / 油漆桶 / 图层 / 撤销重做 / 持久化）、
  * 临摹模式（右侧同尺寸白色画布 + 同款网格），以及画笔模式专属的竖条工具菜单。
  *
  * host 为 AppController，模块通过它访问共享状态：
@@ -361,33 +713,45 @@ export class DrawingModeController {
     this.toolButtons = {
       pen: byId("drawPenTool"),
       eraser: byId("drawEraserTool"),
+      bucket: byId("drawBucketTool"),
       color: byId("drawColorTool"),
       size: byId("drawSizeTool"),
       undo: byId("drawUndoTool"),
       clear: byId("drawClearTool"),
-      opacity: byId("drawOpacityTool"),
+      layer: byId("drawLayerTool"),
       copy: byId("drawCopyTool"),
       exit: byId("drawExitTool"),
     };
     this.colorIndicator = byId("drawColorIndicator");
     this.colorPopout = byId("drawColorPopout");
+    this.colorPreview = byId("drawColorPreview");
+    this.colorHex = byId("drawColorHex");
+    this.colorHueSlider = byId("colorHueSlider");
+    this.colorSatSlider = byId("colorSatSlider");
+    this.colorLightSlider = byId("colorLightSlider");
     this.sizeIndicatorDot = byId("drawSizeIndicatorDot");
     this.sizePopout = byId("drawSizePopout");
     this.sizeSlider = byId("drawSizeSlider");
     this.sizeValue = byId("drawSizeValue");
-    this.opacityPopout = byId("drawOpacityPopout");
-    this.opacitySlider = byId("drawOpacitySlider");
-    this.opacityValue = byId("drawOpacityValue");
+    this.layerList = byId("layerList");
+    this.layerSurfaceToggle = byId("layerSurfaceToggle");
+    this.layerSurfaceReference = byId("layerSurfaceReference");
+    this.layerSurfacePractice = byId("layerSurfacePractice");
+    this.layerAddButton = byId("layerAddButton");
+    this.layerDeleteButton = byId("layerDeleteButton");
+    this.layerUpButton = byId("layerUpButton");
+    this.layerDownButton = byId("layerDownButton");
     this.popoutHosts = new Map([
       ["color", byId("drawColorSlot")],
       ["size", byId("drawSizeSlot")],
-      ["opacity", byId("drawOpacitySlot")],
+      ["layer", byId("drawLayerSlot")],
     ]);
 
     this.tool = {
       color: "#FF4D4F",
       size: 4,
       eraser: false,
+      bucket: false,
     };
     this.isDrawModeEnabled = false;
     this.isCopyModeEnabled = false;
@@ -403,6 +767,7 @@ export class DrawingModeController {
       mirror: () => this.host.state.isMirrorEnabled,
       resolution: () => this.imageNaturalResolution(),
       saveKey: () => this.currentImagePath(),
+      newLayerName: (n) => t("layerDefaultName").replace("{n}", n),
       onChanged: () => this.renderAll(),
     });
     this.practiceSurface = new AnnotationSurface({
@@ -414,10 +779,15 @@ export class DrawingModeController {
         const path = this.currentImagePath();
         return path ? `practice:${path}` : "";
       },
+      newLayerName: (n) => t("layerDefaultName").replace("{n}", n),
       onChanged: () => this.renderAll(),
     });
     this.surfaces = [this.referenceSurface, this.practiceSurface];
     this.activeSurface = this.referenceSurface;
+    // 保证任何时刻每个画面至少有一个可用图层
+    for (const surface of this.surfaces) {
+      surface.resetRuntime();
+    }
 
     this.activeStroke = null;
     this.lastPoint = null;
@@ -439,11 +809,12 @@ export class DrawingModeController {
     this.toolButtons.copy.addEventListener("click", () => this.setCopyModeEnabled(!this.isCopyModeEnabled));
     this.toolButtons.pen.addEventListener("click", () => this.selectPenTool());
     this.toolButtons.eraser.addEventListener("click", () => this.selectEraserTool());
+    this.toolButtons.bucket.addEventListener("click", () => this.selectBucketTool());
     this.toolButtons.undo.addEventListener("click", () => this.activeSurface.undo());
-    this.toolButtons.clear.addEventListener("click", () => this.activeSurface.clearAll());
+    this.toolButtons.clear.addEventListener("click", () => this.activeSurface.clearActiveLayer());
+    this.toolButtons.layer.addEventListener("click", () => this.togglePopout("layer"));
     this.toolButtons.color.addEventListener("click", () => this.togglePopout("color"));
     this.toolButtons.size.addEventListener("click", () => this.togglePopout("size"));
-    this.toolButtons.opacity.addEventListener("click", () => this.togglePopout("opacity"));
 
     this.colorPopout.addEventListener("click", (event) => {
       const swatch = event.target.closest(".annotation-color-swatch");
@@ -455,13 +826,66 @@ export class DrawingModeController {
       this.colorPopout.querySelectorAll(".annotation-color-swatch").forEach((item) => {
         item.classList.toggle("active", item === swatch);
       });
+      this.syncColorEditors();
       this.selectPenTool({ keepPopout: true });
       this.closePopouts();
     });
 
+    for (const slider of [this.colorHueSlider, this.colorSatSlider, this.colorLightSlider]) {
+      slider.addEventListener("input", () => this.applyHslFromSliders());
+    }
+
     this.sizeSlider.addEventListener("input", (event) => this.applySize(event.target.value));
 
-    this.opacitySlider.addEventListener("input", (event) => this.applyOpacity(event.target.value));
+    this.layerAddButton.addEventListener("click", () => {
+      this.activeSurface.addLayer();
+      this.renderLayerPanel();
+    });
+    this.layerDeleteButton.addEventListener("click", () => {
+      this.activeSurface.deleteActiveLayer();
+      this.renderLayerPanel();
+    });
+    this.layerUpButton.addEventListener("click", () => {
+      this.activeSurface.moveActiveLayer(1);
+      this.renderLayerPanel();
+    });
+    this.layerDownButton.addEventListener("click", () => {
+      this.activeSurface.moveActiveLayer(-1);
+      this.renderLayerPanel();
+    });
+
+    // 图层列表：点行选中；拖滑条调透明度（事件委托，行内容由 JS 重建）
+    this.layerList.addEventListener("click", (event) => {
+      const row = event.target.closest(".layer-row");
+      if (!row || row.classList.contains("locked")) {
+        return;
+      }
+      const id = Number(row.dataset.layerId);
+      if (!id || !this.activeSurface.layers.some((layer) => layer.id === id)) {
+        return;
+      }
+      this.activeSurface.activeLayerId = id;
+      this.syncHistoryButtons();
+      this.renderLayerPanel();
+    });
+    this.layerList.addEventListener("input", (event) => {
+      const input = event.target;
+      if (!input.classList.contains("layer-opacity")) {
+        return;
+      }
+      if (input.dataset.kind === "reference") {
+        this.setReferenceOpacity(input.value);
+        return;
+      }
+      const id = Number(input.dataset.layerId);
+      const layer = this.activeSurface.layers.find((item) => item.id === id);
+      if (!layer) {
+        return;
+      }
+      layer.opacity = Math.min(1, Math.max(0, (Number(input.value) || 0) / 100));
+      this.activeSurface.onChanged();
+      this.activeSurface.scheduleSave();
+    });
 
     for (const surface of this.surfaces) {
       if (!surface.canvas) {
@@ -485,6 +909,9 @@ export class DrawingModeController {
 
     this.stripToggle.addEventListener("click", () => this.setStripCollapsed(!this.stripCollapsed));
 
+    this.layerSurfaceReference.addEventListener("click", () => this.setActiveSurface(this.referenceSurface));
+    this.layerSurfacePractice.addEventListener("click", () => this.setActiveSurface(this.practiceSurface));
+
     document.addEventListener("pointerdown", (event) => this.handleOutsidePointerDown(event));
     window.addEventListener("resize", () => this.scheduleRedraw());
 
@@ -500,6 +927,8 @@ export class DrawingModeController {
     }).catch((error) => {
       console.warn("Pen pressure bridge unavailable:", error);
     });
+
+    this.syncColorEditors();
   }
 
   /** 撤销/重做/工具切换等画笔快捷键；返回 true 表示事件已消费 */
@@ -577,18 +1006,15 @@ export class DrawingModeController {
     this.stripToggle.textContent = "▴";
     this.stripToggle.setAttribute("data-tooltip", t("collapseMenu"));
     this.stripToggle.classList.remove("visible");
-    this.previewImageOpacity = 1;
-    elements.currentImage.style.opacity = "";
-    this.opacitySlider.value = "100";
-    this.opacityValue.textContent = "100%";
+    this.setReferenceOpacity(100);
     for (const surface of this.surfaces) {
       surface.resetRuntime();
     }
   }
 
-  /** 涂鸦模式会话开始时调用 */
+  /** 涂鸦模式会话开始时调用：参考图降到 35% 方便描形 */
   applyDoodleDefaults() {
-    this.applyOpacity(35);
+    this.setReferenceOpacity(35);
     this.setDrawModeEnabled(true);
   }
 
@@ -757,6 +1183,16 @@ export class DrawingModeController {
     }
   }
 
+  /** 图层面板里切换编辑参考面 / 临摹面 */
+  setActiveSurface(surface) {
+    if (this.activeSurface === surface) {
+      return;
+    }
+    this.activeSurface = surface;
+    this.syncHistoryButtons();
+    this.renderLayerPanel();
+  }
+
   setCopyModeEnabled(enabled) {
     if (this.isCopyModeEnabled === enabled) {
       return;
@@ -766,6 +1202,10 @@ export class DrawingModeController {
     this.toolButtons.copy.classList.toggle("active", enabled);
     // 参考图移位/缩放后，宿主网格画布的位置必须跟随重算
     this.host.scheduleGridRedraw();
+    // 退出临摹模式：编辑焦点回到参考面，面板中的临摹图层随之隐藏
+    if (!enabled && this.activeSurface === this.practiceSurface) {
+      this.setActiveSurface(this.referenceSurface);
+    }
     this.scheduleRedraw();
   }
 
@@ -838,6 +1278,9 @@ export class DrawingModeController {
       if (next === "size") {
         this.applySize(this.tool.size);
       }
+      if (next === "layer") {
+        this.renderLayerPanel();
+      }
       this.showStrip();
     }
   }
@@ -859,21 +1302,72 @@ export class DrawingModeController {
     }
   }
 
+  /** 画笔/橡皮用圆环光标（cursor:none），油漆桶用自定义图标光标 */
+  syncBucketCursorClass() {
+    const isBucket = this.tool.bucket;
+    this.canvas.classList.toggle("tool-bucket", isBucket);
+    byId("practice-canvas")?.classList.toggle("tool-bucket", isBucket);
+  }
+
   selectPenTool({ keepPopout = false } = {}) {
+    this.tool.bucket = false;
     this.tool.eraser = false;
     this.toolButtons.pen.classList.add("active");
     this.toolButtons.eraser.classList.remove("active");
+    this.toolButtons.bucket.classList.remove("active");
+    this.syncBucketCursorClass();
     if (!keepPopout) {
       this.closePopouts();
     }
   }
 
   selectEraserTool() {
+    this.tool.bucket = false;
     this.tool.eraser = true;
     this.toolButtons.eraser.classList.add("active");
     this.toolButtons.pen.classList.remove("active");
+    this.toolButtons.bucket.classList.remove("active");
+    this.syncBucketCursorClass();
     this.closePopouts();
   }
+
+  selectBucketTool() {
+    this.tool.bucket = true;
+    this.tool.eraser = false;
+    this.toolButtons.bucket.classList.add("active");
+    this.toolButtons.pen.classList.remove("active");
+    this.toolButtons.eraser.classList.remove("active");
+    this.syncBucketCursorClass();
+    this.closePopouts();
+  }
+
+  // ---- 颜色（HSL 选色器） ----
+
+  syncColorEditors() {
+    const { h, s, l } = hexToHsl(this.tool.color);
+    this.colorHueSlider.value = `${h}`;
+    this.colorSatSlider.value = `${s}`;
+    this.colorLightSlider.value = `${l}`;
+    this.colorPreview.style.background = this.tool.color;
+    this.colorHex.textContent = this.tool.color.toUpperCase();
+    this.colorSatSlider.style.background = `linear-gradient(to right, hsl(${h}, 0%, ${l}%), hsl(${h}, 100%, ${l}%))`;
+    this.colorLightSlider.style.background = "linear-gradient(to right, #000000, #808080, #ffffff)";
+  }
+
+  applyHslFromSliders() {
+    this.tool.color = hslToHex(
+      Number(this.colorHueSlider.value),
+      Number(this.colorSatSlider.value),
+      Number(this.colorLightSlider.value),
+    );
+    this.colorIndicator.style.background = this.tool.color;
+    this.syncColorEditors();
+    this.colorPopout.querySelectorAll(".annotation-color-swatch").forEach((item) => {
+      item.classList.toggle("active", (item.dataset.color || "").toUpperCase() === this.tool.color);
+    });
+  }
+
+  // ---- 笔刷大小 ----
 
   updateSizeIndicator() {
     const dotSize = Math.max(3, Math.min(20, Math.round(this.tool.size)));
@@ -890,7 +1384,8 @@ export class DrawingModeController {
     if (!this.brushCursor) {
       return;
     }
-    if (!this.isDrawModeEnabled) {
+    if (!this.isDrawModeEnabled || this.tool.bucket) {
+      // 油漆桶使用自定义图标光标，无需圆环
       this.hideBrushCursor();
       return;
     }
@@ -898,6 +1393,9 @@ export class DrawingModeController {
       this.hideBrushCursor();
       return;
     }
+    const ringSize = Math.max(2, Math.round(this.tool.size));
+    this.brushCursor.style.width = `${ringSize}px`;
+    this.brushCursor.style.height = `${ringSize}px`;
     this.brushCursor.style.transform = `translate(${event.clientX}px, ${event.clientY}px) translate(-50%, -50%)`;
     this.brushCursor.classList.add("visible");
   }
@@ -927,12 +1425,57 @@ export class DrawingModeController {
     }
   }
 
-  applyOpacity(value) {
+  /** 参考图（参考面的最底层）不透明度 */
+  setReferenceOpacity(value) {
     const percent = Math.min(100, Math.max(10, Number(value) || 100));
     this.previewImageOpacity = percent / 100;
     elements.currentImage.style.opacity = `${this.previewImageOpacity}`;
-    this.opacitySlider.value = `${percent}`;
-    this.opacityValue.textContent = `${percent}%`;
+  }
+
+  // ---- 图层面板 ----
+
+  renderLayerPanel() {
+    if (!this.layerList) {
+      return;
+    }
+    // 仅临摹模式下可切换/查看临摹画布图层；非临摹模式只显示参考图图层
+    const copyMode = this.isCopyModeEnabled;
+    if (this.layerSurfaceToggle) {
+      this.layerSurfaceToggle.style.display = copyMode ? "flex" : "none";
+    }
+    const surface = copyMode ? this.activeSurface : this.referenceSurface;
+    const isReference = surface === this.referenceSurface;
+    this.layerSurfaceReference.classList.toggle("active", isReference);
+    this.layerSurfacePractice.classList.toggle("active", !isReference);
+    const rows = [];
+    for (let i = surface.layers.length - 1; i >= 0; i -= 1) {
+      const layer = surface.layers[i];
+      const active = layer.id === surface.activeLayerId;
+      rows.push(`
+        <div class="layer-row${active ? " active" : ""}" data-layer-id="${layer.id}">
+            <span class="layer-name">${escapeHtml(layer.name)}</span>
+            <input type="range" class="layer-opacity" min="0" max="100" value="${Math.round(layer.opacity * 100)}" data-layer-id="${layer.id}">
+        </div>`);
+    }
+    if (surface === this.referenceSurface) {
+      rows.push(`
+        <div class="layer-row locked">
+            <span class="layer-name">${escapeHtml(t("referenceLayer"))}</span>
+            <input type="range" class="layer-opacity" min="10" max="100" value="${Math.round(this.previewImageOpacity * 100)}" data-kind="reference">
+        </div>`);
+    } else {
+      rows.push(`
+        <div class="layer-row locked">
+            <span class="layer-name">${escapeHtml(t("whiteLayer"))}</span>
+            <span class="layer-locked-hint">—</span>
+        </div>`);
+    }
+    this.layerList.innerHTML = rows.join("");
+
+    const layerIds = surface.layers.map((layer) => layer.id);
+    this.layerDeleteButton.disabled = surface.layers.length <= 1;
+    this.layerUpButton.disabled = surface.activeLayerId === layerIds[layerIds.length - 1];
+    this.layerDownButton.disabled = surface.activeLayerId === layerIds[0];
   }
 
   // ---- 笔画绘制（两个画面共用） ----
@@ -966,7 +1509,8 @@ export class DrawingModeController {
     if (rect.width <= 0) {
       return 0.02;
     }
-    return (this.tool.size * 2) / rect.width;
+    // 与光标圆环 1:1：橡皮涂抹直径 = 笔刷大小
+    return this.tool.size / rect.width;
   }
 
   /**
@@ -994,14 +1538,15 @@ export class DrawingModeController {
     return 1;
   }
 
-  drawLiveSegment(surface, from, to, stroke, isErase) {
-    const offscreen = surface.ensureOffscreen();
-    if (!offscreen || !from || !to) {
+  drawLiveSegment(surface, layer, from, to, stroke, isErase) {
+    const resolution = surface.resolutionFn();
+    if (!resolution || !from || !to) {
       return;
     }
-    const ctx = offscreen.getContext("2d");
-    const scaleX = offscreen.width;
-    const scaleY = offscreen.height;
+    const bitmap = surface.layerBitmap(layer, resolution);
+    const ctx = bitmap.getContext("2d");
+    const scaleX = bitmap.width;
+    const scaleY = bitmap.height;
     const pressureMid = ((from[2] ?? 1) + (to[2] ?? 1)) / 2;
 
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -1020,17 +1565,19 @@ export class DrawingModeController {
     ctx.lineTo(to[0] * scaleX, to[1] * scaleY);
     ctx.stroke();
     ctx.globalCompositeOperation = "source-over";
+    surface.replay();
     surface.blit();
   }
 
-  drawLiveDot(surface, point, stroke, isErase) {
-    const offscreen = surface.ensureOffscreen();
-    if (!offscreen || !point) {
+  drawLiveDot(surface, layer, point, stroke, isErase) {
+    const resolution = surface.resolutionFn();
+    if (!resolution || !point) {
       return;
     }
-    const ctx = offscreen.getContext("2d");
-    const scaleX = offscreen.width;
-    const scaleY = offscreen.height;
+    const bitmap = surface.layerBitmap(layer, resolution);
+    const ctx = bitmap.getContext("2d");
+    const scaleX = bitmap.width;
+    const scaleY = bitmap.height;
     const radius = Math.max(1, stroke.width * (point[2] ?? 1) * scaleX) / 2;
 
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -1045,6 +1592,7 @@ export class DrawingModeController {
     ctx.arc(point[0] * scaleX, point[1] * scaleY, radius, 0, Math.PI * 2);
     ctx.fill();
     ctx.globalCompositeOperation = "source-over";
+    surface.replay();
     surface.blit();
   }
 
@@ -1059,6 +1607,22 @@ export class DrawingModeController {
 
     event.preventDefault();
     this.closePopouts();
+
+    if (this.tool.bucket) {
+      const layer = surface.activeLayer();
+      if (!layer) {
+        return;
+      }
+      const action = { type: "fill", point: [point[0], point[1]], color: this.tool.color };
+      const resolution = surface.resolutionFn();
+      const bitmap = surface.layerBitmap(layer, resolution);
+      applyAction(bitmap.getContext("2d"), action, bitmap.width, bitmap.height);
+      surface.recordAction(action, layer);
+      this.renderAll();
+      surface.scheduleSave();
+      return;
+    }
+
     try {
       surface.canvas.setPointerCapture(event.pointerId);
     } catch (error) {
@@ -1067,19 +1631,27 @@ export class DrawingModeController {
 
     const rect = surface.canvas.getBoundingClientRect();
     const isErase = this.tool.eraser;
+    const layer = surface.activeLayer();
+    if (!layer) {
+      return;
+    }
     const pressure = isErase ? 1 : this.pressureFromEvent(event);
     this.pressureSmoothed = pressure;
     this.isStrokeActive = true;
     this.activeSurface = surface;
     this.syncHistoryButtons();
+    if (this.openPopoutName === "layer") {
+      this.renderLayerPanel();
+    }
     this.activeStroke = {
+      layer,
       points: [[point[0], point[1], pressure]],
       color: isErase ? "" : this.tool.color,
       width: isErase ? this.currentEraserWidthNorm(surface) : this.tool.size / rect.width,
       erase: isErase,
     };
     this.lastPoint = this.activeStroke.points[0];
-    this.drawLiveDot(surface, this.activeStroke.points[0], this.activeStroke, isErase);
+    this.drawLiveDot(surface, layer, this.activeStroke.points[0], this.activeStroke, isErase);
   }
 
   handlePointerMove(surface, event) {
@@ -1100,7 +1672,7 @@ export class DrawingModeController {
     // 压感指数平滑，抑制回报抖动
     this.pressureSmoothed = this.pressureSmoothed * 0.6 + rawPressure * 0.4;
     stroke.points.push([point[0], point[1], this.pressureSmoothed]);
-    this.drawLiveSegment(surface, this.lastPoint, stroke.points[stroke.points.length - 1], stroke, stroke.erase);
+    this.drawLiveSegment(surface, stroke.layer, this.lastPoint, stroke.points[stroke.points.length - 1], stroke, stroke.erase);
     this.lastPoint = stroke.points[stroke.points.length - 1];
   }
 
@@ -1132,7 +1704,7 @@ export class DrawingModeController {
         color: stroke.color,
         width: stroke.width,
       },
-    });
+    }, stroke.layer);
     this.renderAll();
     surface.scheduleSave();
   }

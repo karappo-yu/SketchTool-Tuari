@@ -196,18 +196,41 @@
                         <path d="M7.5 21.5l-4-4a2.4 2.4 0 0 1 0-3.4L13.1 4.5a2.4 2.4 0 0 1 3.4 0l4 4a2.4 2.4 0 0 1 0 3.4L10.9 21.5a2.4 2.4 0 0 1-3.4 0zM6.2 15.5l3.3 3.3 8.6-8.6-3.3-3.3-8.6 8.6z"/>
                     </svg>
                 </button>
+                <button id="drawBucketTool" class="toggle" data-i18n-title="bucket" data-tooltip="油漆桶">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M16.56 8.94L7.62 0 6.21 1.41l2.38 2.38-5.17 5.17c-.59.59-.59 1.54 0 2.12l5.5 5.5c.29.29.68.44 1.06.44s.77-.15 1.06-.44l5.5-5.5c.59-.58.59-1.53 0-2.12zM5.21 10L10 5.21 14.79 10H5.21zM19 11.5s-2 2.17-2 3.5c0 1.1.9 2 2 2s2-.9 2-2c0-1.33-2-3.5-2-3.5z"/>
+                    </svg>
+                </button>
                 <div class="draw-tool-slot" id="drawColorSlot">
                     <button id="drawColorTool" class="toggle" data-i18n-title="brushColor" data-tooltip="颜色">
                         <span id="drawColorIndicator" class="color-indicator"></span>
                     </button>
-                    <div id="drawColorPopout" class="draw-popout">
+                    <div id="drawColorPopout" class="draw-popout glassmorphism color-popout">
                         <div class="annotation-color-grid">
                             <button type="button" class="annotation-color-swatch active" data-color="#FF4D4F" style="background:#FF4D4F" title="#FF4D4F"></button>
+                            <button type="button" class="annotation-color-swatch" data-color="#FF9F43" style="background:#FF9F43" title="#FF9F43"></button>
                             <button type="button" class="annotation-color-swatch" data-color="#FFD83D" style="background:#FFD83D" title="#FFD83D"></button>
-                            <button type="button" class="annotation-color-swatch" data-color="#3B82F6" style="background:#3B82F6" title="#3B82F6"></button>
                             <button type="button" class="annotation-color-swatch" data-color="#22C55E" style="background:#22C55E" title="#22C55E"></button>
+                            <button type="button" class="annotation-color-swatch" data-color="#3B82F6" style="background:#3B82F6" title="#3B82F6"></button>
+                            <button type="button" class="annotation-color-swatch" data-color="#A855F7" style="background:#A855F7" title="#A855F7"></button>
                             <button type="button" class="annotation-color-swatch" data-color="#FFFFFF" style="background:#FFFFFF" title="#FFFFFF"></button>
                             <button type="button" class="annotation-color-swatch" data-color="#111111" style="background:#111111" title="#111111"></button>
+                        </div>
+                        <div class="color-preview-row">
+                            <span id="drawColorPreview" class="color-preview"></span>
+                            <span id="drawColorHex" class="color-hex">#FF4D4F</span>
+                        </div>
+                        <div class="hsl-row">
+                            <span class="hsl-label">H</span>
+                            <input type="range" id="colorHueSlider" min="0" max="360" value="0">
+                        </div>
+                        <div class="hsl-row">
+                            <span class="hsl-label">S</span>
+                            <input type="range" id="colorSatSlider" min="0" max="100" value="100">
+                        </div>
+                        <div class="hsl-row">
+                            <span class="hsl-label">L</span>
+                            <input type="range" id="colorLightSlider" min="0" max="100" value="65">
                         </div>
                     </div>
                 </div>
@@ -215,7 +238,7 @@
                     <button id="drawSizeTool" class="toggle" data-i18n-title="brushSize" data-tooltip="笔刷大小">
                         <span class="size-indicator"><span id="drawSizeIndicatorDot" class="size-indicator-dot" style="width:4px;height:4px"></span></span>
                     </button>
-                    <div id="drawSizePopout" class="draw-popout">
+                    <div id="drawSizePopout" class="draw-popout glassmorphism">
                         <div class="opacity-row-header">
                             <span class="opacity-label" data-i18n="brushSize">笔刷大小</span>
                             <span id="drawSizeValue">4</span>
@@ -233,19 +256,24 @@
                         <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
                     </svg>
                 </button>
-                <div class="draw-tool-slot" id="drawOpacitySlot">
-                    <button id="drawOpacityTool" class="toggle" data-i18n-title="imageOpacity" data-tooltip="不透明度">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <circle cx="12" cy="12" r="9"/>
-                            <path d="M12 3a9 9 0 0 1 0 18Z" fill="currentColor" stroke="none"/>
+                <div class="draw-tool-slot" id="drawLayerSlot">
+                    <button id="drawLayerTool" class="toggle" data-i18n-title="layers" data-tooltip="图层">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M11.99 18.54l-7.37-5.73L3 14.07l9 7 9-7-1.62-1.27-7.39 5.73zM12 16l7.36-5.73L21 9l-9-7-9 7 1.63 1.27L12 16z"/>
                         </svg>
                     </button>
-                    <div id="drawOpacityPopout" class="draw-popout">
-                        <div class="opacity-row-header">
-                            <span class="opacity-label" data-i18n="imageOpacity">不透明度</span>
-                            <span id="drawOpacityValue">100%</span>
+                    <div id="drawLayerPopout" class="draw-popout glassmorphism layer-popout">
+                        <div class="layer-surface-toggle" id="layerSurfaceToggle">
+                            <button id="layerSurfaceReference" data-i18n="referenceLayer" data-i18n-title="referenceLayer" data-tooltip="参考图">参考图</button>
+                            <button id="layerSurfacePractice" data-i18n="copyMode" data-i18n-title="copyMode" data-tooltip="临摹">临摹</button>
                         </div>
-                        <input type="range" id="drawOpacitySlider" min="10" max="100" value="100">
+                        <div id="layerList" class="layer-list"></div>
+                        <div class="layer-panel-actions">
+                            <button id="layerAddButton" data-i18n-title="layerAdd" data-tooltip="新建图层">＋</button>
+                            <button id="layerDeleteButton" data-i18n-title="layerDelete" data-tooltip="删除图层">−</button>
+                            <button id="layerUpButton" data-i18n-title="layerUp" data-tooltip="上移">↑</button>
+                            <button id="layerDownButton" data-i18n-title="layerDown" data-tooltip="下移">↓</button>
+                        </div>
                     </div>
                 </div>
                 <button id="drawCopyTool" class="toggle" data-i18n-title="copyMode" data-tooltip="临摹">
