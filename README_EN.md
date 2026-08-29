@@ -30,6 +30,36 @@ This version keeps the core workflow of the original app while adapting the wind
 - Countdown display and time format switching
 - Default folder, startup folder, and always-on-top support
 - macOS-style window dragging and traffic light visibility handling
+- Doodle mode: dims the reference image and enables the drawing board
+- Master Copy mode: same-size white canvas beside the reference, with synced grid and layer panel
+- Pen pressure (tablet), multiple layers, HSL color picker, and paint-bucket fill
+
+## Keyboard Shortcuts
+
+Slideshow:
+
+| Shortcut | Action |
+| --- | --- |
+| Space | Pause / resume |
+| ← / → | Previous / next image (hold to repeat) |
+| M | Toggle mirror |
+| G | Toggle grid |
+
+Drawing mode (Doodle / Master Copy):
+
+| Shortcut | Action |
+| --- | --- |
+| B | Pen tool |
+| E | Eraser tool |
+| [ / ] | Decrease / increase brush size (hold to keep adjusting) |
+| ⌘Z / Ctrl+Z | Undo |
+| ⌘⇧Z / Ctrl+Y | Redo |
+| Esc | Exit drawing mode |
+
+Extras:
+
+- Hold the stylus side button (mapped to "Erase" in the tablet driver) to erase temporarily; release to restore the previous tool. Right / middle-button drag works the same way.
+- Shortcuts are matched by physical key, so they keep working while a Chinese or any other IME is active — no need to switch to English input.
 
 ## Tech Stack
 
