@@ -213,7 +213,7 @@ export class DrawingModeController {
 
   /** 涂鸦模式会话开始时调用 */
   applyDoodleDefaults() {
-    this.applyOpacity(15);
+    this.applyOpacity(35);
     this.setDrawModeEnabled(true);
   }
 
