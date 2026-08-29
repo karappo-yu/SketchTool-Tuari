@@ -1864,29 +1864,33 @@ export class AppController {
       return;
     }
 
-    const gridStep = this.getAdaptiveGridStep(rect.width, rect.height);
-    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    this.ctx.clearRect(0, 0, rect.width, rect.height);
-    this.ctx.lineWidth = 1;
-    this.ctx.strokeStyle = hexToRgba(this.state.currentGridColorHex, GRID_ALPHA);
+    this.paintGridLines(this.ctx, rect.width, rect.height, dpr);
+    this.lastGridRenderSignature = renderSignature;
+  }
 
+  /** 在任意画布上绘制与参考图一致的网格（供临摹画布复用）；调用方负责尺寸与缓存 */
+  paintGridLines(ctx, width, height, dpr) {
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, width, height);
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = hexToRgba(this.state.currentGridColorHex, GRID_ALPHA);
+
+    const gridStep = this.getAdaptiveGridStep(width, height);
     for (let column = 1; column < gridStep.columns; column += 1) {
       const x = gridStep.x * column;
-      this.ctx.beginPath();
-      this.ctx.moveTo(x, 0);
-      this.ctx.lineTo(x, rect.height);
-      this.ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, height);
+      ctx.stroke();
     }
 
     for (let row = 1; row < gridStep.rows; row += 1) {
       const y = gridStep.y * row;
-      this.ctx.beginPath();
-      this.ctx.moveTo(0, y);
-      this.ctx.lineTo(rect.width, y);
-      this.ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(width, y);
+      ctx.stroke();
     }
-
-    this.lastGridRenderSignature = renderSignature;
   }
 
   scheduleGridRedraw() {
@@ -2209,6 +2213,7 @@ export class AppController {
       this.lastGridRenderSignature = "";
       this.ctx.clearRect(0, 0, elements.gridCanvas.width, elements.gridCanvas.height);
     }
+    this.drawing.onGridChanged();
   }
 
   async toggleAlwaysOnTop() {

@@ -697,6 +697,49 @@ button[data-tooltip]:hover::before {
     display: none;
 }
 
+/* 临摹模式：参考图与白色画布左右并排，各占一半 */
+#image-display-area.copy-mode {
+    flex-direction: row;
+    gap: 32px;
+}
+
+#image-display-area.copy-mode #current-image {
+    max-width: calc(50% - 16px);
+}
+
+#practice-stage {
+    position: relative;
+    display: none;
+    flex: none;
+    background: #FFFFFF;
+    box-shadow: 0 0 0 1px var(--glass-border-color);
+}
+
+#image-display-area.copy-mode #practice-stage {
+    display: block;
+}
+
+#practice-grid-canvas,
+#practice-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    pointer-events: none;
+}
+
+#practice-grid-canvas {
+    z-index: 1;
+}
+
+#practice-canvas {
+    z-index: 2;
+}
+
+#image-display-area.draw-mode #practice-canvas {
+    pointer-events: auto;
+    cursor: none;
+}
+
 #current-image {
     position: relative; /* 与白色底垫（#image-backdrop）形成正确的上下层级 */
     z-index: 1;
@@ -835,6 +878,36 @@ button[data-tooltip]:hover::before {
     display: block;
 }
 
+/* 画笔竖条收起/展开控制：与竖条按钮同款 36px，随竖条一起自动隐显；
+   收起状态下常驻（作为唯一展开入口）。right:30px 与竖条按钮列中线对齐 */
+#strip-toggle {
+    position: absolute;
+    top: 20px;
+    right: 30px;
+    z-index: 15;
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    background: var(--button-toggle-bg);
+    border: 1px solid var(--glass-border-color);
+    color: var(--text-color);
+    font-size: 1.1em;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+    -webkit-app-region: no-drag;
+}
+
+#image-display-area.draw-mode #strip-toggle.visible {
+    display: flex;
+}
+
+#strip-toggle:hover {
+    background: var(--button-toggle-hover-bg);
+}
+
 /* 画笔模式：原菜单整体让位，悬浮热区关闭，由画板菜单接管 */
 #image-display-area.draw-mode #right-controls-hover-zone,
 #image-display-area.draw-mode #bottom-controls-hover-zone {
@@ -849,7 +922,7 @@ button[data-tooltip]:hover::before {
 /* 画笔模式竖条菜单：与轮播竖条同款玻璃拟态，随右缘悬停隐显 */
 #drawing-controls {
     position: absolute;
-    top: 20px;
+    top: 66px; /* 右上角收起/展开按钮（20px + 36px + 10px 间距）下方 */
     right: 20px;
     z-index: 15;
     display: flex;

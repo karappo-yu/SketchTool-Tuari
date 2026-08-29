@@ -100,6 +100,13 @@
         <div id="image-display-area" class="hidden" data-tauri-drag-region>
             <div id="image-backdrop"></div>
             <img id="current-image" crossorigin="anonymous" src="" alt="当前速写图片">
+
+            <!-- 临摹模式：与参考图同尺寸的白色画布 -->
+            <div id="practice-stage">
+                <canvas id="practice-grid-canvas"></canvas>
+                <canvas id="practice-canvas" data-no-drag></canvas>
+            </div>
+
             <canvas id="grid-canvas"></canvas>
             <canvas id="annotation-canvas" data-no-drag></canvas>
             <div id="countdown"></div>
@@ -174,6 +181,9 @@
             <!-- 画笔光标圆环（跟随鼠标，直径=笔刷大小） -->
             <div id="brush-cursor"></div>
 
+            <!-- 画笔竖条收起/展开控制（右上角，菜单从其下方展开） -->
+            <button id="strip-toggle" data-no-drag data-tooltip="收起菜单">▴</button>
+
             <!-- 画笔模式竖条菜单（随右缘悬停隐显，替代原菜单） -->
             <div id="drawing-controls" class="glassmorphism">
                 <button id="drawPenTool" class="toggle active" data-i18n-title="drawMode" data-tooltip="画笔">
@@ -238,6 +248,11 @@
                         <input type="range" id="drawOpacitySlider" min="10" max="100" value="100">
                     </div>
                 </div>
+                <button id="drawCopyTool" class="toggle" data-i18n-title="copyMode" data-tooltip="临摹">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h10v14z"/>
+                    </svg>
+                </button>
                 <button id="drawExitTool" class="primary" data-i18n-title="exitDraw" data-tooltip="退出画笔">
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
                         <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
