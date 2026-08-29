@@ -1,4 +1,4 @@
-//! macOS 数位板笔压 / 橡皮擦桥接。
+//! macOS 数位板笔压 / 橡皮擦 / 物理按键桥接。
 //!
 //! WebKit 不保证把数位板驱动的压感和橡皮擦状态透传给 Web PointerEvent，
 //! 因此在 Rust 侧用 NSEvent 本地事件监听（无需系统辅助功能权限，
@@ -6,6 +6,11 @@
 //! 以 `pen-state` 事件流推给前端：
 //! - pressure：真实笔压
 //! - eraser：笔上"橡皮擦"侧键按住中
+//!
+//! 另外监听 keyDown，把快捷键用到的物理键码以 `native-key` 事件推给前端：
+//! 中文输入法等 IME 激活时，WKWebView 收到的 keydown 不可靠（key 变成
+//! "Process"、code 可能为空，甚至完全不下发），而 NSEvent 在 IME 处理
+//! 之前就能看到真实键码。
 //!
 //! 侧键状态为**锁定语义**：实测 Wacom 驱动只在按下/抬起瞬间携带侧键位
 //! （按下 buttonMask=0x3，拖动中 0x1，抬起 0x2），因此按下时锁定、
@@ -21,10 +26,39 @@ struct PenState {
     eraser: bool,
 }
 
+/// keyDown 桥接事件：code 为 Web KeyboardEvent.code 风格的物理键位名
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct NativeKey {
+    code: &'static str,
+    repeat: bool,
+    meta_key: bool,
+    ctrl_key: bool,
+    alt_key: bool,
+    shift_key: bool,
+}
+
+/// ANSI 布局键码 → Web code（快捷键只用得到这几个键）
+fn native_key_code(key_code: u16) -> Option<&'static str> {
+    Some(match key_code {
+        33 => "BracketLeft",
+        30 => "BracketRight",
+        11 => "KeyB",
+        14 => "KeyE",
+        5 => "KeyG",
+        46 => "KeyM",
+        49 => "Space",
+        53 => "Escape",
+        123 => "ArrowLeft",
+        124 => "ArrowRight",
+        _ => return None,
+    })
+}
+
 #[cfg(target_os = "macos")]
 pub fn start_pen_pressure_monitor(handle: tauri::AppHandle) {
     use block2::RcBlock;
-    use objc2_app_kit::{NSEvent, NSEventMask, NSEventSubtype, NSEventType};
+    use objc2_app_kit::{NSEvent, NSEventMask, NSEventModifierFlags, NSEventSubtype, NSEventType};
     use std::cell::Cell;
     use std::ptr::NonNull;
     use tauri::Emitter;
@@ -32,7 +66,8 @@ pub fn start_pen_pressure_monitor(handle: tauri::AppHandle) {
     let mask = NSEventMask::LeftMouseDown
         | NSEventMask::LeftMouseUp
         | NSEventMask::LeftMouseDragged
-        | NSEventMask::MouseMoved;
+        | NSEventMask::MouseMoved
+        | NSEventMask::KeyDown;
 
     let eraser_latched = Cell::new(false);
     let last_hover_eraser = Cell::new(false);
@@ -40,6 +75,26 @@ pub fn start_pen_pressure_monitor(handle: tauri::AppHandle) {
     let block: RcBlock<dyn Fn(NonNull<NSEvent>) -> *mut NSEvent> = RcBlock::new(
         move |event: NonNull<NSEvent>| -> *mut NSEvent {
             let event = unsafe { event.as_ref() };
+
+            // 物理按键桥接：在 IME 处理之前读取键码（见模块注释）
+            if event.r#type() == NSEventType::KeyDown {
+                if let Some(code) = native_key_code(event.keyCode()) {
+                    let flags = event.modifierFlags();
+                    let _ = handle.emit(
+                        "native-key",
+                        NativeKey {
+                            code,
+                            repeat: event.isARepeat(),
+                            meta_key: flags.contains(NSEventModifierFlags::Command),
+                            ctrl_key: flags.contains(NSEventModifierFlags::Control),
+                            alt_key: flags.contains(NSEventModifierFlags::Option),
+                            shift_key: flags.contains(NSEventModifierFlags::Shift),
+                        },
+                    );
+                }
+                return event as *const NSEvent as *mut NSEvent;
+            }
+
             if event.subtype() != NSEventSubtype::TabletPoint {
                 return event as *const NSEvent as *mut NSEvent;
             }

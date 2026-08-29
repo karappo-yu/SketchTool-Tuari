@@ -9,7 +9,15 @@ import {
 } from "./constants.js";
 import { elements, groups } from "./dom.js";
 import { desktop, toFileUrl } from "./api/desktop.js";
-import { formatTimeForHint, hexToRgba } from "./utils.js";
+import { listen } from "@tauri-apps/api/event";
+import {
+  formatTimeForHint,
+  hexToRgba,
+  markShortcutKeyHandled,
+  shortcutKey,
+  SHORTCUT_CODE_SET,
+  wasShortcutKeyJustHandled,
+} from "./utils.js";
 import { setLanguage, t, getLanguage, SUPPORTED_LANGUAGES, updatePageI18n } from "./i18n.js";
 import { DrawingModeController } from "./drawing-mode.js";
 
@@ -129,7 +137,53 @@ export class AppController {
       option.addEventListener("mousedown", (event) => this.handleDisplayTimeDropdownSelect(event));
     });
     document.addEventListener("pointerdown", (event) => this.handleGlobalPointerDown(event), true);
-    document.addEventListener("keydown", (event) => this.handleGlobalKeyDown(event));
+    document.addEventListener("keydown", (event) => {
+      // Rust native-key 桥（见下方监听）也看得到这个按键，两条路径只处理一次
+      const code = typeof event.code === "string" ? event.code : "";
+      if (SHORTCUT_CODE_SET.has(code)) {
+        if (wasShortcutKeyJustHandled(code)) {
+          return;
+        }
+        markShortcutKeyHandled(code);
+      }
+      this.handleGlobalKeyDown(event);
+    });
+    // 中文输入法等 IME 激活时 WKWebView 收不到可靠的 keydown（key 变为
+    // "Process"、code 可能为空甚至不下发），由 Rust 在 NSEvent 层、
+    // IME 处理之前读取物理键码补一条通道
+    listen("native-key", (event) => {
+      const payload = event.payload || {};
+      const code = typeof payload.code === "string" ? payload.code : "";
+      if (!SHORTCUT_CODE_SET.has(code)) {
+        return;
+      }
+      // 修饰键组合（⌘Z 等）不受 IME 影响，走 DOM 正常通道
+      if (payload.metaKey || payload.ctrlKey || payload.altKey) {
+        return;
+      }
+      // 连发只对 [ ] 调笔刷有意义
+      if (payload.repeat && code !== "BracketLeft" && code !== "BracketRight") {
+        return;
+      }
+      if (wasShortcutKeyJustHandled(code)) {
+        return;
+      }
+      const target = document.activeElement;
+      if (target instanceof Element && target.closest("input, textarea, select, [contenteditable]")) {
+        return;
+      }
+      markShortcutKeyHandled(code);
+      this.handleGlobalKeyDown(new KeyboardEvent("keydown", {
+        key: "Process",
+        code,
+        metaKey: Boolean(payload.metaKey),
+        ctrlKey: Boolean(payload.ctrlKey),
+        altKey: Boolean(payload.altKey),
+        shiftKey: Boolean(payload.shiftKey),
+        bubbles: true,
+        cancelable: true,
+      }));
+    }).catch((error) => console.warn("Native key bridge unavailable:", error));
     elements.mirrorToggle.addEventListener("click", () => this.toggleMirrorEffect());
     elements.overlayMirrorToggle.addEventListener("click", () => this.toggleMirrorEffect());
     elements.grayscaleToggle.addEventListener("click", () => this.toggleGrayscaleEffect());
@@ -652,7 +706,10 @@ export class AppController {
       return;
     }
 
-    if (event.key === "Escape") {
+    // 快捷键统一走物理键位解析，中文输入法等 IME 激活时依然可用
+    const key = shortcutKey(event);
+
+    if (key === "escape") {
       this.closeDisplayTimeDropdown();
       this.closeImageCountDropdown();
       return;
@@ -672,33 +729,31 @@ export class AppController {
     }
 
     // 方向键允许按住连续切换，其余单键开关忽略自动重复
-    if (event.repeat && event.key !== "ArrowLeft" && event.key !== "ArrowRight") {
+    if (event.repeat && key !== "arrowleft" && key !== "arrowright") {
       return;
     }
 
-    switch (event.key) {
+    switch (key) {
       case " ":
         event.preventDefault();
         this.togglePausePlay();
         break;
-      case "ArrowLeft":
+      case "arrowleft":
         if (this.state.sessionHasPrev) {
           event.preventDefault();
           this.showPreviousImage();
         }
         break;
-      case "ArrowRight":
+      case "arrowright":
         if (this.state.sessionHasNext) {
           event.preventDefault();
           this.advanceImage();
         }
         break;
       case "m":
-      case "M":
         this.toggleMirrorEffect();
         break;
       case "g":
-      case "G":
         this.toggleGridEffect();
         break;
     }

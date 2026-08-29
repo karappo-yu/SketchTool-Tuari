@@ -2,6 +2,7 @@ import { desktop } from "./api/desktop.js";
 import { elements } from "./dom.js";
 import { listen } from "@tauri-apps/api/event";
 import { t } from "./i18n.js";
+import { shortcutKey } from "./utils.js";
 
 const ANNOTATION_OFFSCREEN_MAX_WIDTH = 2560;
 const ANNOTATION_SIZE_MIN = 1;
@@ -949,7 +950,7 @@ export class DrawingModeController {
       return false;
     }
 
-    const key = typeof event.key === "string" ? event.key.toLowerCase() : "";
+    const key = shortcutKey(event);
 
     if ((event.metaKey || event.ctrlKey) && key === "z") {
       event.preventDefault();
@@ -969,19 +970,17 @@ export class DrawingModeController {
       return false;
     }
     // [ ] 支持按住连发实现连续调粗细，其余单键忽略自动重复
-    const isSizeKey = event.key === "[" || event.key === "]";
+    const isSizeKey = key === "[" || key === "]";
     if (event.repeat && !isSizeKey) {
       return false;
     }
 
-    switch (event.key) {
+    switch (key) {
       case "b":
-      case "B":
         this.setDrawModeEnabled(true);
         this.selectPenTool();
         return true;
       case "e":
-      case "E":
         this.setDrawModeEnabled(true);
         this.selectEraserTool();
         return true;
@@ -995,7 +994,7 @@ export class DrawingModeController {
           this.adjustSize(1);
         }
         return this.isDrawModeEnabled;
-      case "Escape":
+      case "escape":
         if (this.isDrawModeEnabled) {
           this.setDrawModeEnabled(false);
           return true;

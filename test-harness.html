@@ -274,6 +274,15 @@
             const lastTwo = penLayer.actions.slice(-2).map((a) => a.type + ":" + (a.stroke?.points?.length ?? "-"));
             log("pen-button eraser split: " + lastTwo.join(" | "));
 
+            // 中文输入法兼容：IME 激活时 macOS 把 key 报告为 "Process"，快捷键按物理键位识别
+            const imeKey = (code) => new KeyboardEvent("keydown", { key: "Process", code, cancelable: true });
+            controller.handleGlobalKeyDown(imeKey("KeyB")); // B = 进入画笔并选画笔工具
+            const sizeBefore = controller.tool.size;
+            controller.handleGlobalKeyDown(imeKey("BracketLeft"));
+            const sizeAfterSmaller = controller.tool.size;
+            controller.handleGlobalKeyDown(imeKey("BracketRight"));
+            log(`IME size keys: drawMode=${controller.isDrawModeEnabled}, size ${sizeBefore} -> ${sizeAfterSmaller} -> ${controller.tool.size}`);
+
             // 面板切换参考面 / 临摹面
             controller.setCopyModeEnabled(true);
             controller.renderLayerPanel();
