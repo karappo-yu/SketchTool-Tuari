@@ -816,15 +816,15 @@ button[data-tooltip]:hover::before {
     cursor: none; /* 用画笔圆环光标代替系统箭头 */
 }
 
-/* 画笔圆环光标：直径=笔刷大小，双层描边保证深浅背景都可见 */
+/* 画笔圆环光标：直径=笔刷大小；difference 混合让单圈在任何背景上都高对比可见 */
 #brush-cursor {
     position: fixed;
     left: 0;
     top: 0;
     z-index: 30;
     box-sizing: border-box;
-    border: 1.5px solid rgba(255, 255, 255, 0.95);
-    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55), inset 0 0 0 1px rgba(0, 0, 0, 0.55);
+    border: 0.5px solid #FFFFFF;
+    mix-blend-mode: difference;
     border-radius: 50%;
     pointer-events: none;
     display: none;
