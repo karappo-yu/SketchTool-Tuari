@@ -828,7 +828,7 @@ export class DrawingModeController {
       });
       this.syncColorEditors();
       this.selectPenTool({ keepPopout: true });
-      this.closePopouts();
+      // 保持面板打开，方便基于预设色继续用 HSL 滑条微调
     });
 
     for (const slider of [this.colorHueSlider, this.colorSatSlider, this.colorLightSlider]) {
