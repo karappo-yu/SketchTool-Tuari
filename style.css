@@ -665,13 +665,15 @@ button[data-tooltip]:hover::before {
 }
 
 /* Positioning for startButton tooltip */
-#startButton[data-tooltip]::after {
+#startButton[data-tooltip]::after,
+#doodleModeButton[data-tooltip]::after {
     bottom: 100%; /* Position above the button */
     left: 50%;
     transform: translateX(-50%);
     margin-bottom: 10px; /* Space from the button */
 }
-#startButton[data-tooltip]::before {
+#startButton[data-tooltip]::before,
+#doodleModeButton[data-tooltip]::before {
     bottom: 100%; /* Position above the button */
     left: 50%;
     transform: translateX(-50%) translateY(8px); /* Adjust for arrow position */
@@ -696,6 +698,8 @@ button[data-tooltip]:hover::before {
 }
 
 #current-image {
+    position: relative; /* 与白色底垫（#image-backdrop）形成正确的上下层级 */
+    z-index: 1;
     max-width: 100%;
     max-height: 100%;
     width: auto; /* Allow natural width based on aspect ratio */
@@ -703,6 +707,16 @@ button[data-tooltip]:hover::before {
     object-fit: contain; /* This is key for fitting without cropping */
     transition: filter 0.5s ease, transform 0.5s ease;
     user-select: none;
+    pointer-events: none;
+}
+
+/* 图片底垫：降低参考图不透明度时露出白色描摹底，图片以外仍是平均色背景 */
+#image-backdrop {
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 0;
+    background: #FFFFFF;
     pointer-events: none;
 }
 
@@ -786,6 +800,232 @@ button[data-tooltip]:hover::before {
 
 #grid-canvas.active {
     opacity: 1;
+}
+
+#annotation-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 3;
+    pointer-events: none;
+    touch-action: none;
+}
+
+#annotation-canvas.active {
+    pointer-events: auto;
+    cursor: crosshair;
+}
+
+/* 画笔模式：原菜单整体让位，悬浮热区关闭，由画板菜单接管 */
+#image-display-area.draw-mode #right-controls-hover-zone,
+#image-display-area.draw-mode #bottom-controls-hover-zone {
+    pointer-events: none;
+}
+
+#image-display-area.draw-mode #overlay-controls,
+#image-display-area.draw-mode #image-navigation-controls {
+    display: none;
+}
+
+/* 画笔模式竖条菜单：与轮播竖条同款玻璃拟态，随右缘悬停隐显 */
+#drawing-controls {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    z-index: 15;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 10px;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+    pointer-events: none;
+}
+/* 注意：此处不能加 overflow 裁剪，子面板（.draw-popout）是伸出竖条外侧的 */
+
+#drawing-controls.visible {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+}
+
+#drawing-controls button {
+    padding: 0;
+    font-size: 1.1em;
+    background: var(--button-toggle-bg);
+    color: var(--text-color);
+    border: 1px solid var(--glass-border-color);
+    border-radius: 8px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    white-space: nowrap;
+    position: relative;
+    -webkit-app-region: no-drag;
+}
+
+#drawing-controls button.primary {
+    background: linear-gradient(135deg, var(--button-primary-start), var(--button-primary-end));
+}
+
+#drawing-controls button.primary:hover {
+    background: linear-gradient(135deg, var(--button-primary-end), var(--button-primary-start));
+}
+
+#drawing-controls button.toggle.active {
+    background: linear-gradient(135deg, var(--button-toggle-active-start), var(--button-toggle-active-end));
+    box-shadow: 0 2px 8px rgba(40, 167, 69, 0.4);
+}
+
+#drawing-controls button.toggle:not(.active):hover {
+    background: var(--button-toggle-hover-bg);
+}
+
+#drawing-controls button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+#drawing-controls button svg {
+    fill: currentColor;
+    width: 22px;
+    height: 22px;
+    display: block;
+}
+
+.draw-tool-slot {
+    position: relative;
+    display: flex;
+    justify-content: center;
+}
+
+/* 子面板：从按钮左侧弹出 */
+.draw-popout {
+    position: absolute;
+    top: 50%;
+    right: calc(100% + 12px);
+    transform: translateY(-50%);
+    z-index: 17;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.25s ease, visibility 0.25s ease;
+    pointer-events: none;
+}
+
+.draw-tool-slot.open .draw-popout {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+}
+
+.color-indicator {
+    display: block;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #FF4D4F;
+    border: 1px solid var(--glass-border-color);
+}
+
+.size-indicator {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+}
+
+.size-indicator-dot {
+    display: block;
+    border-radius: 50%;
+    background: currentColor;
+}
+
+.annotation-color-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 24px);
+    gap: 8px;
+}
+
+.annotation-color-swatch {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    border: 1px solid var(--glass-border-color);
+    padding: 0;
+    cursor: pointer;
+    -webkit-app-region: no-drag;
+}
+
+.annotation-color-swatch.active {
+    box-shadow: 0 0 0 2px var(--glass-bg-color), 0 0 0 4px var(--text-color);
+}
+
+.annotation-size-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    align-items: center;
+}
+
+.annotation-size-option {
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    border: 1px solid var(--glass-border-color);
+    background: var(--button-toggle-bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    cursor: pointer;
+    -webkit-app-region: no-drag;
+}
+
+.annotation-size-option .size-dot {
+    display: block;
+    border-radius: 50%;
+    background: var(--text-color);
+}
+
+.annotation-size-option.active {
+    background: var(--button-toggle-hover-bg);
+    box-shadow: 0 0 0 1px var(--text-color);
+}
+
+.opacity-row-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 6px;
+}
+
+.opacity-row-header .opacity-label {
+    font-size: 0.8em;
+    color: var(--text-color);
+    white-space: nowrap;
+}
+
+#drawOpacityValue {
+    font-size: 0.8em;
+    color: var(--text-color);
+    min-width: 3em;
+    text-align: right;
+}
+
+#drawOpacitySlider {
+    width: 110px;
+    accent-color: var(--button-toggle-active-start, #4CAF50);
 }
 
 /* Image effects */

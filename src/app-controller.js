@@ -11,6 +11,7 @@ import { elements, groups } from "./dom.js";
 import { desktop, toFileUrl } from "./api/desktop.js";
 import { formatTimeForHint, hexToRgba } from "./utils.js";
 import { setLanguage, t, getLanguage, SUPPORTED_LANGUAGES, updatePageI18n } from "./i18n.js";
+import { DrawingModeController } from "./drawing-mode.js";
 
 export class AppController {
   constructor() {
@@ -28,6 +29,7 @@ export class AppController {
       color: "rgb(0,0,0)",
     };
     this.platform = "";
+    this.drawing = new DrawingModeController(this);
 
     this.state = {
       imageFiles: [],
@@ -74,6 +76,7 @@ export class AppController {
       eligibleImageRawIndexes: [],
       startImageIndex: 0,
       folderProgressByPath: {},
+      isDoodleModeEnabled: false,
     };
   }
 
@@ -91,6 +94,7 @@ export class AppController {
   bindEvents() {
     elements.sketchFolderInputDisplay.addEventListener("click", () => this.handleSketchFolderClick());
     elements.startButton.addEventListener("click", () => this.initiateSketchSession());
+    elements.doodleModeToggle.addEventListener("click", () => this.toggleDoodleMode());
     elements.settingsButton.addEventListener("click", () => elements.settingsModalOverlay.classList.add("active"));
     elements.closeSettingsModalButton.addEventListener("click", () => elements.settingsModalOverlay.classList.remove("active"));
     elements.randomPlaybackToggle.addEventListener("click", () => this.toggleRandomPlayback());
@@ -147,10 +151,12 @@ export class AppController {
     elements.prevPageButton.addEventListener("click", () => this.showPreviousPageOfThumbnails());
     elements.nextPageButton.addEventListener("click", () => this.showNextPageOfThumbnails());
     elements.libraryFilterMarkedToggle.addEventListener("click", () => this.toggleLibraryFilter());
+    this.drawing.bindEvents();
     window.addEventListener("resize", () => {
       if (this.state.isGridEnabled && !elements.imageDisplayArea.classList.contains("hidden")) {
         this.scheduleGridRedraw();
       }
+      this.drawing.onResize();
     });
 
     groups.mainMenuBackgroundChoiceRadios.forEach((radio) => {
@@ -641,11 +647,61 @@ export class AppController {
   }
 
   handleGlobalKeyDown(event) {
-    if (event.key !== "Escape") {
+    // 画笔相关快捷键（⌘Z/⌘⇧Z/Ctrl+Y、B/E、[/]、Esc 退出画笔）由画笔模块处理
+    if (this.drawing.handleGlobalKeyDown(event)) {
       return;
     }
-    this.closeDisplayTimeDropdown();
-    this.closeImageCountDropdown();
+
+    if (event.key === "Escape") {
+      this.closeDisplayTimeDropdown();
+      this.closeImageCountDropdown();
+      return;
+    }
+
+    // 以下快捷键仅在轮播界面生效，且不干扰输入框中的原生编辑
+    if (!this.isPlaybackVisible()) {
+      return;
+    }
+    const target = event.target;
+    if (target instanceof Element && target.closest("input, textarea, select, [contenteditable]")) {
+      return;
+    }
+
+    if (event.metaKey || event.ctrlKey || event.altKey) {
+      return;
+    }
+
+    // 方向键允许按住连续切换，其余单键开关忽略自动重复
+    if (event.repeat && event.key !== "ArrowLeft" && event.key !== "ArrowRight") {
+      return;
+    }
+
+    switch (event.key) {
+      case " ":
+        event.preventDefault();
+        this.togglePausePlay();
+        break;
+      case "ArrowLeft":
+        if (this.state.sessionHasPrev) {
+          event.preventDefault();
+          this.showPreviousImage();
+        }
+        break;
+      case "ArrowRight":
+        if (this.state.sessionHasNext) {
+          event.preventDefault();
+          this.advanceImage();
+        }
+        break;
+      case "m":
+      case "M":
+        this.toggleMirrorEffect();
+        break;
+      case "g":
+      case "G":
+        this.toggleGridEffect();
+        break;
+    }
   }
 
   getDefaultPreviewBackgroundColor() {
@@ -1332,6 +1388,11 @@ export class AppController {
     elements.startButton.setAttribute("data-tooltip", "请选择速写文件夹");
   }
 
+  toggleDoodleMode() {
+    this.state.isDoodleModeEnabled = !this.state.isDoodleModeEnabled;
+    elements.doodleModeToggle.classList.toggle("active", this.state.isDoodleModeEnabled);
+  }
+
   updateMainMenuHintText() {
     const eligibleCount = this.getEligibleImageCount();
     const targetCount = this.getTargetSketchCount(eligibleCount);
@@ -1475,6 +1536,10 @@ export class AppController {
     elements.topRightMenuButtons.classList.add("hidden");
     elements.pausePlayButton.textContent = "⏸";
     this.resetGridRenderState(true);
+    this.drawing.resetSessionState();
+    if (this.state.isDoodleModeEnabled) {
+      this.drawing.applyDoodleDefaults();
+    }
     elements.gridCanvas.classList.toggle("active", this.state.isGridEnabled);
 
     document.body.style.backgroundColor = "transparent";
@@ -1656,10 +1721,12 @@ export class AppController {
       if (this.state.isGridEnabled) {
         this.scheduleGridRedraw();
       }
+      this.drawing.reloadForCurrentImage();
       this.refreshPreviewAppearance();
     };
 
     elements.currentImage.onerror = () => {
+      this.drawing.handleImageLoadError();
       if (!this.state.isPlaying || !this.state.imageFiles[this.state.currentImageIndex]) {
         return;
       }
@@ -1849,6 +1916,7 @@ export class AppController {
     this.state.sessionHasPrev = false;
     elements.pausePlayButton.textContent = "⏸";
     elements.currentImage.src = "";
+    this.drawing.resetSessionState();
     await this.showMainMenu();
   }
 
@@ -2119,6 +2187,7 @@ export class AppController {
     this.applyImageEffects();
     elements.mirrorToggle.classList.toggle("active", this.state.isMirrorEnabled);
     elements.overlayMirrorToggle.classList.toggle("active", this.state.isMirrorEnabled);
+    this.drawing.onMirrorChanged();
   }
 
   toggleGrayscaleEffect() {

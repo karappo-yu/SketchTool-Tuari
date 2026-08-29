@@ -13,6 +13,7 @@ export const elements = {
   startPageInput: byId("startPageInput"),
   startPageTotalLabel: byId("startPageTotalLabel"),
   startButton: byId("startButton"),
+  doodleModeToggle: byId("doodleModeToggle"),
   mirrorToggle: byId("mirrorToggle"),
   grayscaleToggle: byId("grayscaleToggle"),
   gridToggle: byId("gridToggle"),

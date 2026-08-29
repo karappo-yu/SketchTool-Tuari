@@ -122,6 +122,18 @@ export const desktop = {
     return command("toggle_image_mark", { filePath, duration });
   },
 
+  async loadImageAnnotations(filePath) {
+    return command("load_image_annotations", { filePath });
+  },
+
+  async saveImageAnnotations(filePath, strokes) {
+    return command("save_image_annotations", { filePath, strokes });
+  },
+
+  async clearImageAnnotations(filePath) {
+    return command("clear_image_annotations", { filePath });
+  },
+
   async setAlwaysOnTop(alwaysOnTop) {
     return command("set_always_on_top", { alwaysOnTop });
   },

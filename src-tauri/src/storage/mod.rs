@@ -1,3 +1,4 @@
+mod annotations;
 mod marks;
 
 use std::{
@@ -12,6 +13,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use tauri::{AppHandle, Manager};
 
+pub use annotations::{
+    clear_image_annotations_from_db, init_annotations_db, load_image_annotations_from_db,
+    save_image_annotations_to_db,
+};
 pub use marks::{
     clear_image_mark_from_db, get_latest_marks_map, get_marked_paths_set, init_db, save_image_mark_to_db, MarkEntry,
 };
@@ -157,6 +162,7 @@ pub fn create_app_state(app: &AppHandle) -> Result<AppState, String> {
     };
 
     init_db(&state)?;
+    init_annotations_db(&state)?;
     persist_settings(&state)?;
 
     Ok(state)
