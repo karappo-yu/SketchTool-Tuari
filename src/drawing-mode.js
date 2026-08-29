@@ -1,8 +1,9 @@
 import { desktop } from "./api/desktop.js";
 import { elements } from "./dom.js";
+import { listen } from "@tauri-apps/api/event";
 
-const ANNOTATION_SIZES = [4, 8, 14];
-const ANNOTATION_SIZE_DOTS = { 4: 6, 8: 10, 14: 15 };
+const ANNOTATION_SIZE_MIN = 1;
+const ANNOTATION_SIZE_MAX = 30;
 const STRIP_HIDE_DELAY_MS = 500;
 const STRIP_REVEAL_EDGE_PX = 90;
 
@@ -24,6 +25,7 @@ export class DrawingModeController {
     this.ctx = this.canvas ? this.canvas.getContext("2d") : null;
     this.drawModeToggle = byId("drawModeToggle");
     this.backdrop = byId("image-backdrop");
+    this.brushCursor = byId("brush-cursor");
 
     this.strip = byId("drawing-controls");
     this.toolButtons = {
@@ -40,6 +42,8 @@ export class DrawingModeController {
     this.colorPopout = byId("drawColorPopout");
     this.sizeIndicatorDot = byId("drawSizeIndicatorDot");
     this.sizePopout = byId("drawSizePopout");
+    this.sizeSlider = byId("drawSizeSlider");
+    this.sizeValue = byId("drawSizeValue");
     this.opacityPopout = byId("drawOpacityPopout");
     this.opacitySlider = byId("drawOpacitySlider");
     this.opacityValue = byId("drawOpacityValue");
@@ -69,6 +73,10 @@ export class DrawingModeController {
     this.redrawFrame = null;
     this.stripHideTimer = null;
     this.openPopoutName = "";
+
+    // 数位板笔压：Rust 桥（macOS）推送的样本流；Windows 走 PointerEvent 原生 pressure
+    this.pressureSamples = [];
+    this.pressureSmoothed = 1;
   }
 
   // ---- 生命周期（由 AppController 委托调用） ----
@@ -102,21 +110,7 @@ export class DrawingModeController {
       this.closePopouts();
     });
 
-    this.sizePopout.addEventListener("click", (event) => {
-      const option = event.target.closest(".annotation-size-option");
-      if (!option) {
-        return;
-      }
-      const size = Number(option.dataset.size);
-      if (Number.isFinite(size) && size > 0) {
-        this.tool.size = size;
-      }
-      this.updateSizeIndicator();
-      this.sizePopout.querySelectorAll(".annotation-size-option").forEach((item) => {
-        item.classList.toggle("active", Number(item.dataset.size) === this.tool.size);
-      });
-      this.closePopouts();
-    });
+    this.sizeSlider.addEventListener("input", (event) => this.applySize(event.target.value));
 
     this.opacitySlider.addEventListener("input", (event) => this.applyOpacity(event.target.value));
 
@@ -127,12 +121,29 @@ export class DrawingModeController {
 
     // 竖条自动隐显：靠近右缘出现，移开后延迟隐藏（与原菜单的 hover 行为一致）
     elements.imageDisplayArea.addEventListener("pointermove", (event) => this.handleStripReveal(event));
-    elements.imageDisplayArea.addEventListener("pointerleave", () => this.scheduleStripHide());
+    elements.imageDisplayArea.addEventListener("pointermove", (event) => this.updateBrushCursor(event));
+    elements.imageDisplayArea.addEventListener("pointerleave", () => {
+      this.scheduleStripHide();
+      this.hideBrushCursor();
+    });
     this.strip.addEventListener("pointerenter", () => this.showStrip());
     this.strip.addEventListener("pointerleave", () => this.scheduleStripHide());
 
     document.addEventListener("pointerdown", (event) => this.handleOutsidePointerDown(event));
     window.addEventListener("resize", () => this.scheduleRedraw());
+
+    listen("pen-pressure", (event) => {
+      const pressure = Number(event.payload);
+      if (!Number.isFinite(pressure)) {
+        return;
+      }
+      this.pressureSamples.push({ at: Date.now(), pressure });
+      if (this.pressureSamples.length > 64) {
+        this.pressureSamples.splice(0, this.pressureSamples.length - 64);
+      }
+    }).catch((error) => {
+      console.warn("Pen pressure bridge unavailable:", error);
+    });
   }
 
   /** 撤销/重做/工具切换等画笔快捷键；返回 true 表示事件已消费 */
@@ -164,7 +175,9 @@ export class DrawingModeController {
     if (event.metaKey || event.ctrlKey || event.altKey) {
       return false;
     }
-    if (event.repeat) {
+    // [ ] 支持按住连发实现连续调粗细，其余单键忽略自动重复
+    const isSizeKey = event.key === "[" || event.key === "]";
+    if (event.repeat && !isSizeKey) {
       return false;
     }
 
@@ -249,6 +262,7 @@ export class DrawingModeController {
     if (!enabled) {
       this.activeStroke = null;
       this.isStrokeActive = false;
+      this.hideBrushCursor();
       this.strip.classList.remove("visible");
       clearTimeout(this.stripHideTimer);
       this.stripHideTimer = null;
@@ -304,6 +318,9 @@ export class DrawingModeController {
     if (next) {
       this.openPopoutName = next;
       this.popoutHosts.get(next).classList.add("open");
+      if (next === "size") {
+        this.applySize(this.tool.size);
+      }
       this.showStrip();
     }
   }
@@ -342,23 +359,55 @@ export class DrawingModeController {
   }
 
   updateSizeIndicator() {
-    const dotSize = ANNOTATION_SIZE_DOTS[this.tool.size] ?? 10;
+    const dotSize = Math.max(3, Math.min(20, Math.round(this.tool.size)));
     this.sizeIndicatorDot.style.width = `${dotSize}px`;
     this.sizeIndicatorDot.style.height = `${dotSize}px`;
+    if (this.brushCursor) {
+      const ringSize = Math.max(2, Math.round(this.tool.size));
+      this.brushCursor.style.width = `${ringSize}px`;
+      this.brushCursor.style.height = `${ringSize}px`;
+    }
+  }
+
+  updateBrushCursor(event) {
+    if (!this.brushCursor) {
+      return;
+    }
+    if (!this.isDrawModeEnabled) {
+      this.hideBrushCursor();
+      return;
+    }
+    if (event.target instanceof Element && event.target.closest("#drawing-controls")) {
+      this.hideBrushCursor();
+      return;
+    }
+    this.brushCursor.style.transform = `translate(${event.clientX}px, ${event.clientY}px) translate(-50%, -50%)`;
+    this.brushCursor.classList.add("visible");
+  }
+
+  hideBrushCursor() {
+    if (this.brushCursor) {
+      this.brushCursor.classList.remove("visible");
+    }
+  }
+
+  applySize(value) {
+    const size = Math.min(ANNOTATION_SIZE_MAX, Math.max(ANNOTATION_SIZE_MIN, Math.round(Number(value) || 4)));
+    this.tool.size = size;
+    this.updateSizeIndicator();
+    if (this.sizeSlider.value !== `${size}`) {
+      this.sizeSlider.value = `${size}`;
+    }
+    this.sizeValue.textContent = `${size}`;
   }
 
   adjustSize(step) {
-    const currentIndex = ANNOTATION_SIZES.indexOf(this.tool.size);
-    const nextIndex = Math.min(ANNOTATION_SIZES.length - 1, Math.max(0, (currentIndex === -1 ? 1 : currentIndex) + step));
-    const size = ANNOTATION_SIZES[nextIndex];
-    if (size === this.tool.size) {
-      return;
+    this.applySize(this.tool.size + step);
+    // 键盘调节时短暂亮出竖条，让指示圆点的变化可见
+    if (this.isDrawModeEnabled) {
+      this.showStrip();
+      this.scheduleStripHide(1200);
     }
-    this.tool.size = size;
-    this.updateSizeIndicator();
-    this.sizePopout.querySelectorAll(".annotation-size-option").forEach((item) => {
-      item.classList.toggle("active", Number(item.dataset.size) === size);
-    });
   }
 
   applyOpacity(value) {
@@ -441,7 +490,12 @@ export class DrawingModeController {
     if (points.length === 0) {
       return;
     }
-    const lineWidth = Math.max(1, (stroke.width ?? 0.01) * scaleX);
+    const baseWidth = Math.max(1, (stroke.width ?? 0.01) * scaleX);
+    // 笔压：第三位缺省（旧数据）按 1 处理，即恒定线宽
+    const pressureAt = (index) => {
+      const point = points[index];
+      return point.length >= 3 ? Math.min(1, Math.max(0.05, point[2])) : 1;
+    };
 
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
@@ -454,25 +508,23 @@ export class DrawingModeController {
       ctx.strokeStyle = stroke.color || "#FF4D4F";
       ctx.fillStyle = stroke.color || "#FF4D4F";
     }
-    ctx.lineWidth = lineWidth;
 
     if (points.length === 1) {
       const [nx, ny] = points[0];
+      ctx.lineWidth = baseWidth;
       ctx.beginPath();
-      ctx.arc(nx * scaleX, ny * scaleY, lineWidth / 2, 0, Math.PI * 2);
+      ctx.arc(nx * scaleX, ny * scaleY, baseWidth * pressureAt(0) / 2, 0, Math.PI * 2);
       ctx.fill();
     } else {
-      ctx.beginPath();
-      points.forEach(([nx, ny], index) => {
-        const x = nx * scaleX;
-        const y = ny * scaleY;
-        if (index === 0) {
-          ctx.moveTo(x, y);
-        } else {
-          ctx.lineTo(x, y);
-        }
-      });
-      ctx.stroke();
+      for (let index = 1; index < points.length; index += 1) {
+        const [ax, ay] = points[index - 1];
+        const [bx, by] = points[index];
+        ctx.lineWidth = Math.max(1, baseWidth * (pressureAt(index - 1) + pressureAt(index)) / 2);
+        ctx.beginPath();
+        ctx.moveTo(ax * scaleX, ay * scaleY);
+        ctx.lineTo(bx * scaleX, by * scaleY);
+        ctx.stroke();
+      }
     }
     ctx.globalCompositeOperation = "source-over";
   }
@@ -564,6 +616,31 @@ export class DrawingModeController {
     return (this.tool.size * 2) / rect.width;
   }
 
+  /**
+   * 解析当前笔点压感：
+   * - 数位板笔（pointerType === "pen"）且事件自带 pressure（Windows/WebView2 原生）优先
+   * - 否则用 Rust 桥推送的最新样本（macOS NSEvent TabletPoint，事件队列顺序对应当前笔点）
+   * - 无压感数据（普通鼠标）返回 1，线宽恒定
+   */
+  pressureFromEvent(event) {
+    const native = Number(event.pressure ?? 0);
+    if (event.pointerType === "pen" && native > 0) {
+      return native;
+    }
+
+    if (this.pressureSamples.length > 0) {
+      const now = Date.now();
+      for (let i = this.pressureSamples.length - 1; i >= 0; i -= 1) {
+        const sample = this.pressureSamples[i];
+        if (sample.at <= now + 12) {
+          return sample.pressure;
+        }
+      }
+      return this.pressureSamples[this.pressureSamples.length - 1].pressure;
+    }
+    return 1;
+  }
+
   drawLiveSegment(from, to, stroke, isErase) {
     const offscreen = this.ensureOffscreen();
     if (!offscreen || !from || !to) {
@@ -572,6 +649,7 @@ export class DrawingModeController {
     const ctx = offscreen.getContext("2d");
     const scaleX = offscreen.width;
     const scaleY = offscreen.height;
+    const pressureMid = ((from[2] ?? 1) + (to[2] ?? 1)) / 2;
 
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.lineCap = "round";
@@ -583,7 +661,7 @@ export class DrawingModeController {
       ctx.globalCompositeOperation = "source-over";
       ctx.strokeStyle = stroke.color || "#FF4D4F";
     }
-    ctx.lineWidth = Math.max(1, stroke.width * scaleX);
+    ctx.lineWidth = Math.max(1, stroke.width * pressureMid * scaleX);
     ctx.beginPath();
     ctx.moveTo(from[0] * scaleX, from[1] * scaleY);
     ctx.lineTo(to[0] * scaleX, to[1] * scaleY);
@@ -600,7 +678,7 @@ export class DrawingModeController {
     const ctx = offscreen.getContext("2d");
     const scaleX = offscreen.width;
     const scaleY = offscreen.height;
-    const radius = Math.max(1, stroke.width * scaleX) / 2;
+    const radius = Math.max(1, stroke.width * (point[2] ?? 1) * scaleX) / 2;
 
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     if (isErase) {
@@ -636,15 +714,17 @@ export class DrawingModeController {
 
     const rect = elements.currentImage.getBoundingClientRect();
     const isErase = this.tool.eraser;
+    const pressure = isErase ? 1 : this.pressureFromEvent(event);
+    this.pressureSmoothed = pressure;
     this.isStrokeActive = true;
     this.activeStroke = {
-      points: [point],
+      points: [[point[0], point[1], pressure]],
       color: isErase ? "" : this.tool.color,
       width: isErase ? this.currentEraserWidthNorm() : this.tool.size / rect.width,
       erase: isErase,
     };
-    this.lastPoint = point;
-    this.drawLiveDot(point, this.activeStroke, isErase);
+    this.lastPoint = this.activeStroke.points[0];
+    this.drawLiveDot(this.activeStroke.points[0], this.activeStroke, isErase);
   }
 
   handlePointerMove(event) {
@@ -661,9 +741,12 @@ export class DrawingModeController {
       return;
     }
 
-    stroke.points.push(point);
-    this.drawLiveSegment(this.lastPoint, point, stroke, stroke.erase);
-    this.lastPoint = point;
+    const rawPressure = stroke.erase ? 1 : this.pressureFromEvent(event);
+    // 压感指数平滑，抑制回报抖动
+    this.pressureSmoothed = this.pressureSmoothed * 0.6 + rawPressure * 0.4;
+    stroke.points.push([point[0], point[1], this.pressureSmoothed]);
+    this.drawLiveSegment(this.lastPoint, stroke.points[stroke.points.length - 1], stroke, stroke.erase);
+    this.lastPoint = stroke.points[stroke.points.length - 1];
   }
 
   handlePointerUp(event) {

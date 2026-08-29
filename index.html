@@ -171,6 +171,9 @@
                 </div>
             </div>
 
+            <!-- 画笔光标圆环（跟随鼠标，直径=笔刷大小） -->
+            <div id="brush-cursor"></div>
+
             <!-- 画笔模式竖条菜单（随右缘悬停隐显，替代原菜单） -->
             <div id="drawing-controls" class="glassmorphism">
                 <button id="drawPenTool" class="toggle active" data-i18n-title="drawMode" data-tooltip="画笔">
@@ -200,14 +203,14 @@
                 </div>
                 <div class="draw-tool-slot" id="drawSizeSlot">
                     <button id="drawSizeTool" class="toggle" data-i18n-title="brushSize" data-tooltip="笔刷大小">
-                        <span class="size-indicator"><span id="drawSizeIndicatorDot" class="size-indicator-dot" style="width:6px;height:6px"></span></span>
+                        <span class="size-indicator"><span id="drawSizeIndicatorDot" class="size-indicator-dot" style="width:4px;height:4px"></span></span>
                     </button>
                     <div id="drawSizePopout" class="draw-popout">
-                        <div class="annotation-size-list">
-                            <button type="button" class="annotation-size-option active" data-size="4"><span class="size-dot" style="width:6px;height:6px"></span></button>
-                            <button type="button" class="annotation-size-option" data-size="8"><span class="size-dot" style="width:10px;height:10px"></span></button>
-                            <button type="button" class="annotation-size-option" data-size="14"><span class="size-dot" style="width:15px;height:15px"></span></button>
+                        <div class="opacity-row-header">
+                            <span class="opacity-label" data-i18n="brushSize">笔刷大小</span>
+                            <span id="drawSizeValue">4</span>
                         </div>
+                        <input type="range" id="drawSizeSlider" min="1" max="30" step="1" value="4">
                     </div>
                 </div>
                 <button id="drawUndoTool" class="toggle" data-i18n-title="undo" data-tooltip="撤销">

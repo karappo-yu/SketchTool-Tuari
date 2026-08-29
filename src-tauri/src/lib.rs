@@ -1,4 +1,5 @@
 mod commands;
+mod pen_pressure;
 mod storage;
 
 use serde_json::{Map, Number, Value};
@@ -66,6 +67,8 @@ pub fn run() {
         .setup(|app| {
             let state = storage::create_app_state(&app.handle())?;
             app.manage(state);
+
+            pen_pressure::start_pen_pressure_monitor(app.handle().clone());
 
             if let Some(window) = app.get_webview_window("main") {
                 let app_state = app.state::<AppState>();

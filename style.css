@@ -813,7 +813,26 @@ button[data-tooltip]:hover::before {
 
 #annotation-canvas.active {
     pointer-events: auto;
-    cursor: crosshair;
+    cursor: none; /* 用画笔圆环光标代替系统箭头 */
+}
+
+/* 画笔圆环光标：直径=笔刷大小，双层描边保证深浅背景都可见 */
+#brush-cursor {
+    position: fixed;
+    left: 0;
+    top: 0;
+    z-index: 30;
+    box-sizing: border-box;
+    border: 1.5px solid rgba(255, 255, 255, 0.95);
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55), inset 0 0 0 1px rgba(0, 0, 0, 0.55);
+    border-radius: 50%;
+    pointer-events: none;
+    display: none;
+    transform: translate(-100px, -100px);
+}
+
+#brush-cursor.visible {
+    display: block;
 }
 
 /* 画笔模式：原菜单整体让位，悬浮热区关闭，由画板菜单接管 */
@@ -971,38 +990,6 @@ button[data-tooltip]:hover::before {
     box-shadow: 0 0 0 2px var(--glass-bg-color), 0 0 0 4px var(--text-color);
 }
 
-.annotation-size-list {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    align-items: center;
-}
-
-.annotation-size-option {
-    width: 30px;
-    height: 30px;
-    border-radius: 8px;
-    border: 1px solid var(--glass-border-color);
-    background: var(--button-toggle-bg);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0;
-    cursor: pointer;
-    -webkit-app-region: no-drag;
-}
-
-.annotation-size-option .size-dot {
-    display: block;
-    border-radius: 50%;
-    background: var(--text-color);
-}
-
-.annotation-size-option.active {
-    background: var(--button-toggle-hover-bg);
-    box-shadow: 0 0 0 1px var(--text-color);
-}
-
 .opacity-row-header {
     display: flex;
     justify-content: space-between;
@@ -1023,9 +1010,17 @@ button[data-tooltip]:hover::before {
     text-align: right;
 }
 
-#drawOpacitySlider {
+#drawOpacitySlider,
+#drawSizeSlider {
     width: 110px;
     accent-color: var(--button-toggle-active-start, #4CAF50);
+}
+
+#drawSizeValue {
+    font-size: 0.8em;
+    color: var(--text-color);
+    min-width: 2em;
+    text-align: right;
 }
 
 /* Image effects */
