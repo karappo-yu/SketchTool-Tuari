@@ -297,8 +297,16 @@
             const sizeBefore = controller.tool.size;
             controller.handleGlobalKeyDown(imeKey("BracketLeft"));
             const sizeAfterSmaller = controller.tool.size;
+            await new Promise((r) => setTimeout(r, 400)); // 拉开间隔，模拟单次精调
             controller.handleGlobalKeyDown(imeKey("BracketRight"));
             log(`IME size keys: drawMode=${controller.isDrawModeEnabled}, size ${sizeBefore} -> ${sizeAfterSmaller} -> ${controller.tool.size}`);
+            // 线性步长：连按 6 次 ] 应精确 +18（每格固定 ±3）
+            const sizeRapidStart = controller.tool.size;
+            for (let i = 0; i < 6; i++) {
+                controller.handleGlobalKeyDown(imeKey("BracketRight"));
+            }
+            const sizeRapid = controller.tool.size;
+            log(`linear adjust: ${sizeRapidStart} -> ${sizeRapid} after 6 presses (linear ${sizeRapid - sizeRapidStart === 18 ? "ok" : "UNEXPECTED"})`);
 
             // 画笔菜单镜像：H 键切换，竖条按钮高亮同步（含 IME Process 键）
             const mirrorBtn = document.getElementById("drawMirrorTool");
