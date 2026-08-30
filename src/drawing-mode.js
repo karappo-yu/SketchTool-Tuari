@@ -7,6 +7,8 @@ import { shortcutKey } from "./utils.js";
 const ANNOTATION_OFFSCREEN_MAX_WIDTH = 2560;
 const ANNOTATION_SIZE_MIN = 1;
 const ANNOTATION_SIZE_MAX = 30;
+/* 快捷键/旋钮每格固定步长：线性变化量，手感可预期 */
+const ANNOTATION_SIZE_STEP = 3;
 const FILL_TOLERANCE = 32;
 const STRIP_HIDE_DELAY_MS = 500;
 const STRIP_REVEAL_EDGE_PX = 90;
@@ -1508,7 +1510,12 @@ export class DrawingModeController {
   }
 
   applySize(value) {
-    const size = Math.min(ANNOTATION_SIZE_MAX, Math.max(ANNOTATION_SIZE_MIN, Math.round(Number(value) || 4)));
+    // 0 是合法的越界值（最小档继续缩小产生），必须夹回最小值而不是当作缺失回退默认 4
+    const parsed = Number(value);
+    const size = Math.min(
+      ANNOTATION_SIZE_MAX,
+      Math.max(ANNOTATION_SIZE_MIN, Math.round(Number.isFinite(parsed) && `${value}`.trim() !== "" ? parsed : 4)),
+    );
     this.tool.size = size;
     this.updateSizeIndicator();
     if (this.sizeSlider.value !== `${size}`) {
@@ -1518,9 +1525,8 @@ export class DrawingModeController {
   }
 
   adjustSize(step) {
-    // 快捷键调节灵敏度随笔刷大小提高：小笔刷每次 ±1 细调，大笔刷最高 ±5 粗调
-    const magnitude = Math.max(1, Math.round((Math.abs(step) * this.tool.size) / 6));
-    this.applySize(this.tool.size + Math.sign(step) * magnitude);
+    // 固定线性步长：旋钮/连发场景下每格变化量恒定，不做任何随大小或速度的非线性调整
+    this.applySize(this.tool.size + step * ANNOTATION_SIZE_STEP);
     // 键盘调节时短暂亮出竖条，让指示圆点的变化可见
     if (this.isDrawModeEnabled) {
       this.showStrip();
