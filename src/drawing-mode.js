@@ -716,6 +716,7 @@ export class DrawingModeController {
       clear: byId("drawClearTool"),
       layer: byId("drawLayerTool"),
       copy: byId("drawCopyTool"),
+      hideReference: byId("drawHideReferenceTool"),
       exit: byId("drawExitTool"),
     };
     this.colorIndicator = byId("drawColorIndicator");
@@ -751,6 +752,7 @@ export class DrawingModeController {
     };
     this.isDrawModeEnabled = false;
     this.isCopyModeEnabled = false;
+    this.referenceHidden = false;
     this.previewImageOpacity = 1;
 
     // 数位板：Rust 桥（macOS）推送的笔压样本流与橡皮擦设备标志；Windows 走原生 pressure
@@ -804,6 +806,7 @@ export class DrawingModeController {
     this.drawModeToggle.addEventListener("click", () => this.setDrawModeEnabled(!this.isDrawModeEnabled));
     this.toolButtons.exit.addEventListener("click", () => this.setDrawModeEnabled(false));
     this.toolButtons.copy.addEventListener("click", () => this.setCopyModeEnabled(!this.isCopyModeEnabled));
+    this.toolButtons.hideReference.addEventListener("click", () => this.setReferenceHidden(!this.referenceHidden));
     this.toolButtons.pen.addEventListener("click", () => this.selectPenTool());
     this.toolButtons.eraser.addEventListener("click", () => this.selectEraserTool());
     this.toolButtons.bucket.addEventListener("click", () => this.selectBucketTool());
@@ -1027,6 +1030,8 @@ export class DrawingModeController {
 
   /** 图片切换加载完成后调用：载入参考面与临摹面的笔记 */
   reloadForCurrentImage() {
+    // 换图后参考恢复可见：先看图再默写
+    this.setReferenceHidden(false);
     for (const surface of this.surfaces) {
       surface.load();
     }
@@ -1064,12 +1069,20 @@ export class DrawingModeController {
     });
   }
 
+  /** 临摹画布是否当前可见（临摹模式，或普通画笔下切换到临摹画布） */
+  isPracticeVisible() {
+    return this.isCopyModeEnabled || this.referenceHidden;
+  }
+
   renderAll() {
-    this.referenceSurface.render();
-    if (this.isCopyModeEnabled) {
+    // 注意顺序：临摹面布局（stage 尺寸）会改变 flex 里参考图的位置，
+    // 必须先渲染临摹面、再渲染参考面，白幕垫/注释画布才能按最终位置对齐，
+    // 否则参考图右缘会露出一条平均色背景（降不透明度时可见）
+    if (this.isPracticeVisible()) {
       this.practiceSurface.render();
       this.renderPracticeGrid();
     }
+    this.referenceSurface.render();
     this.syncHistoryButtons();
   }
 
@@ -1114,16 +1127,34 @@ export class DrawingModeController {
   }
 
   layoutPracticeCanvas() {
-    if (!this.isCopyModeEnabled || elements.imageDisplayArea.classList.contains("hidden")) {
+    if (!this.isPracticeVisible() || elements.imageDisplayArea.classList.contains("hidden")) {
       return null;
     }
-    const rect = elements.currentImage.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0 || !this.practiceStage) {
+    if (!this.practiceStage) {
       return null;
     }
-    // 临摹画布尺寸与参考图完全一致
-    this.practiceStage.style.width = `${rect.width}px`;
-    this.practiceStage.style.height = `${rect.height}px`;
+    // 隐藏参考（默写）时按原图宽高比在展示区内完整铺开，其余情况与参考图完全一致
+    if (this.referenceHidden) {
+      const natural = this.imageNaturalResolution();
+      if (!natural) {
+        return null;
+      }
+      const containerRect = elements.imageDisplayArea.getBoundingClientRect();
+      const scale = Math.min(containerRect.width / natural.width, containerRect.height / natural.height);
+      if (!(scale > 0)) {
+        return null;
+      }
+      this.practiceStage.style.width = `${natural.width * scale}px`;
+      this.practiceStage.style.height = `${natural.height * scale}px`;
+    } else {
+      const rect = elements.currentImage.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) {
+        return null;
+      }
+      // 临摹画布尺寸与参考图完全一致
+      this.practiceStage.style.width = `${rect.width}px`;
+      this.practiceStage.style.height = `${rect.height}px`;
+    }
     const stageRect = this.practiceStage.getBoundingClientRect();
     if (stageRect.width <= 0 || stageRect.height <= 0) {
       return null;
@@ -1175,7 +1206,9 @@ export class DrawingModeController {
     byId("practice-canvas").classList.toggle("active", enabled);
     this.drawModeToggle.classList.toggle("active", enabled);
     this.closePopouts();
+    // 画笔模式退出时恢复参考可见，下次进入从参考开始
     if (!enabled) {
+      this.setReferenceHidden(false);
       this.activeStroke = null;
       this.isStrokeActive = false;
       this.hideBrushCursor();
@@ -1209,11 +1242,49 @@ export class DrawingModeController {
     this.toolButtons.copy.classList.toggle("active", enabled);
     // 参考图移位/缩放后，宿主网格画布的位置必须跟随重算
     this.host.scheduleGridRedraw();
-    // 退出临摹模式：编辑焦点回到参考面，面板中的临摹图层随之隐藏
-    if (!enabled && this.activeSurface === this.practiceSurface) {
-      this.setActiveSurface(this.referenceSurface);
+    // 退出临摹模式：编辑焦点回到参考面，面板中的临摹图层随之隐藏，参考恢复可见
+    if (!enabled) {
+      this.setReferenceHidden(false);
+      if (this.activeSurface === this.practiceSurface) {
+        this.setActiveSurface(this.referenceSurface);
+      }
     }
     this.scheduleRedraw();
+  }
+
+  /** 默写/切换画布：临摹模式下隐藏参考做默写；普通画笔模式下与参考画布互斥切换 */
+  setReferenceHidden(hidden) {
+    if (this.referenceHidden === hidden) {
+      return;
+    }
+    if (hidden && !this.isDrawModeEnabled) {
+      return;
+    }
+    this.referenceHidden = hidden;
+    elements.imageDisplayArea.classList.toggle("reference-hidden", hidden);
+    this.syncHideReferenceButton();
+    // 编辑焦点跟随可见面：隐藏参考 → 临摹面；普通画笔恢复参考 → 参考面
+    if (hidden && this.activeSurface === this.referenceSurface) {
+      this.setActiveSurface(this.practiceSurface);
+    }
+    if (!hidden && !this.isCopyModeEnabled && this.activeSurface === this.practiceSurface) {
+      this.setActiveSurface(this.referenceSurface);
+    }
+    this.host.scheduleGridRedraw();
+    this.renderLayerPanel();
+    this.scheduleRedraw();
+  }
+
+  /** 竖条「隐藏参考」按钮：图标与提示随状态切换 */
+  syncHideReferenceButton() {
+    const button = this.toolButtons.hideReference;
+    if (!button) {
+      return;
+    }
+    button.classList.toggle("active", this.referenceHidden);
+    const label = t(this.referenceHidden ? "showReference" : "hideReference");
+    button.title = label;
+    button.setAttribute("data-tooltip", label);
   }
 
   handleStripReveal(event) {
@@ -1456,12 +1527,12 @@ export class DrawingModeController {
     if (!this.layerList) {
       return;
     }
-    // 仅临摹模式下可切换/查看临摹画布图层；非临摹模式只显示参考图图层
+    // 仅临摹模式下显示参考/临摹切换行；隐藏参考（默写）时只看临摹图层
     const copyMode = this.isCopyModeEnabled;
     if (this.layerSurfaceToggle) {
-      this.layerSurfaceToggle.style.display = copyMode ? "flex" : "none";
+      this.layerSurfaceToggle.style.display = copyMode && !this.referenceHidden ? "flex" : "none";
     }
-    const surface = copyMode ? this.activeSurface : this.referenceSurface;
+    const surface = copyMode || this.referenceHidden ? this.activeSurface : this.referenceSurface;
     const isReference = surface === this.referenceSurface;
     this.layerSurfaceReference.classList.toggle("active", isReference);
     this.layerSurfacePractice.classList.toggle("active", !isReference);

@@ -715,8 +715,17 @@ button[data-tooltip]:hover::before {
     box-shadow: 0 0 0 1px var(--glass-border-color);
 }
 
-#image-display-area.copy-mode #practice-stage {
+#image-display-area.copy-mode #practice-stage,
+#image-display-area.reference-hidden #practice-stage {
     display: block;
+}
+
+/* 默写/画布切换：隐藏参考侧，临摹画布按原图宽高比占满展示区 */
+#image-display-area.reference-hidden #current-image,
+#image-display-area.reference-hidden #image-backdrop,
+#image-display-area.reference-hidden #grid-canvas,
+#image-display-area.reference-hidden #annotation-canvas {
+    display: none;
 }
 
 #practice-grid-canvas,
@@ -738,6 +747,15 @@ button[data-tooltip]:hover::before {
 #image-display-area.draw-mode #practice-canvas {
     pointer-events: auto;
     cursor: none;
+}
+
+/* 竖条「隐藏参考」按钮：图标随状态切换（可见→点隐藏，隐藏中→点显示） */
+#drawHideReferenceTool:not(.active) .icon-show {
+    display: none;
+}
+
+#drawHideReferenceTool.active .icon-hide {
+    display: none;
 }
 
 #current-image {
