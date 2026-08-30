@@ -1518,7 +1518,9 @@ export class DrawingModeController {
   }
 
   adjustSize(step) {
-    this.applySize(this.tool.size + step);
+    // 快捷键调节灵敏度随笔刷大小提高：小笔刷每次 ±1 细调，大笔刷最高 ±5 粗调
+    const magnitude = Math.max(1, Math.round((Math.abs(step) * this.tool.size) / 6));
+    this.applySize(this.tool.size + Math.sign(step) * magnitude);
     // 键盘调节时短暂亮出竖条，让指示圆点的变化可见
     if (this.isDrawModeEnabled) {
       this.showStrip();
