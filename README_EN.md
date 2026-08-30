@@ -51,6 +51,7 @@ Drawing mode (Doodle / Master Copy):
 | --- | --- |
 | B | Pen tool |
 | E | Eraser tool |
+| H | Mirror |
 | [ / ] | Decrease / increase brush size (hold to keep adjusting) |
 | ⌘Z / Ctrl+Z | Undo |
 | ⌘⇧Z / Ctrl+Y | Redo |

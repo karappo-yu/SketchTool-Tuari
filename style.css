@@ -766,7 +766,7 @@ button[data-tooltip]:hover::before {
     width: auto; /* Allow natural width based on aspect ratio */
     height: auto; /* Allow natural height based on aspect ratio */
     object-fit: contain; /* This is key for fitting without cropping */
-    transition: filter 0.5s ease, transform 0.5s ease;
+    transition: filter 0.5s ease; /* 镜像翻转不做动画，瞬时切换 */
     user-select: none;
     pointer-events: none;
 }

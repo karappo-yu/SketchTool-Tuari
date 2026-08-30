@@ -158,6 +158,11 @@
                         <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/>
                     </svg>
                 </button>
+                <button id="drawMirrorTool" class="toggle" data-i18n-title="mirror" data-tooltip="镜像">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M11 5H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h5v2h2V3h-2v2zm7 0h-5v2h5c1.1 0 2 .9 2 2v6c0 1.1-.9 2-2 2h-5v2h5c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2z"/>
+                    </svg>
+                </button>
                 <button id="drawExitTool" class="primary" data-i18n-title="exitDraw" data-tooltip="退出画笔">
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
                         <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
@@ -211,6 +216,10 @@
                 isPlaybackVisible: () => true,
                 paintGridLines: () => {},
                 scheduleGridRedraw: () => {},
+                toggleMirrorEffect: () => {
+                    host.state.isMirrorEnabled = !host.state.isMirrorEnabled;
+                    if (window.__controller) window.__controller.onMirrorChanged();
+                },
             };
             const controller = new DrawingModeController(host);
             window.__controller = controller;
@@ -290,6 +299,14 @@
             const sizeAfterSmaller = controller.tool.size;
             controller.handleGlobalKeyDown(imeKey("BracketRight"));
             log(`IME size keys: drawMode=${controller.isDrawModeEnabled}, size ${sizeBefore} -> ${sizeAfterSmaller} -> ${controller.tool.size}`);
+
+            // 画笔菜单镜像：H 键切换，竖条按钮高亮同步（含 IME Process 键）
+            const mirrorBtn = document.getElementById("drawMirrorTool");
+            controller.handleGlobalKeyDown(new KeyboardEvent("keydown", { key: "Process", code: "KeyH", cancelable: true }));
+            const mirrorOn = controller.host.state.isMirrorEnabled === true && mirrorBtn.classList.contains("active");
+            controller.handleGlobalKeyDown(new KeyboardEvent("keydown", { key: "h", code: "KeyH", cancelable: true }));
+            const mirrorOff = controller.host.state.isMirrorEnabled === false && !mirrorBtn.classList.contains("active");
+            log("mirror toggle: on=" + mirrorOn + ", off=" + mirrorOff);
 
             // 面板切换参考面 / 临摹面
             controller.setCopyModeEnabled(true);

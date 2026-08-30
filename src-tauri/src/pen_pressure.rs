@@ -45,6 +45,7 @@ fn native_key_code(key_code: u16) -> Option<&'static str> {
         30 => "BracketRight",
         11 => "KeyB",
         14 => "KeyE",
+        4 => "KeyH",
         5 => "KeyG",
         46 => "KeyM",
         49 => "Space",

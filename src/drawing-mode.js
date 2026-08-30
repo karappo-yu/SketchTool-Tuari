@@ -717,6 +717,7 @@ export class DrawingModeController {
       layer: byId("drawLayerTool"),
       copy: byId("drawCopyTool"),
       hideReference: byId("drawHideReferenceTool"),
+      mirror: byId("drawMirrorTool"),
       exit: byId("drawExitTool"),
     };
     this.colorIndicator = byId("drawColorIndicator");
@@ -807,6 +808,7 @@ export class DrawingModeController {
     this.toolButtons.exit.addEventListener("click", () => this.setDrawModeEnabled(false));
     this.toolButtons.copy.addEventListener("click", () => this.setCopyModeEnabled(!this.isCopyModeEnabled));
     this.toolButtons.hideReference.addEventListener("click", () => this.setReferenceHidden(!this.referenceHidden));
+    this.toolButtons.mirror.addEventListener("click", () => this.host.toggleMirrorEffect());
     this.toolButtons.pen.addEventListener("click", () => this.selectPenTool());
     this.toolButtons.eraser.addEventListener("click", () => this.selectEraserTool());
     this.toolButtons.bucket.addEventListener("click", () => this.selectBucketTool());
@@ -987,6 +989,12 @@ export class DrawingModeController {
         this.setDrawModeEnabled(true);
         this.selectEraserTool();
         return true;
+      case "h":
+        if (this.isDrawModeEnabled) {
+          this.host.toggleMirrorEffect();
+          return true;
+        }
+        return false;
       case "[":
         if (this.isDrawModeEnabled) {
           this.adjustSize(-1);
@@ -1044,6 +1052,8 @@ export class DrawingModeController {
   }
 
   onMirrorChanged() {
+    // 竖条镜像按钮与菜单/悬浮按钮共用同一个镜像状态
+    this.toolButtons.mirror.classList.toggle("active", this.host.state.isMirrorEnabled);
     this.scheduleRedraw();
   }
 
@@ -1217,6 +1227,8 @@ export class DrawingModeController {
       clearTimeout(this.stripHideTimer);
       this.stripHideTimer = null;
     } else {
+      // 镜像可能在菜单里已开启，进入画笔时同步竖条按钮高亮
+      this.toolButtons.mirror.classList.toggle("active", this.host.state.isMirrorEnabled);
       this.scheduleRedraw();
       this.showStrip();
       this.scheduleStripHide(2000);
