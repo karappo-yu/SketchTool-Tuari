@@ -67,6 +67,22 @@ fn is_supported_image(path: &Path) -> bool {
     storage::image_extensions().contains(&extension.as_str())
 }
 
+fn matches_mark_filter(
+    path: &str,
+    marked_set: &HashSet<String>,
+    filter_marked: bool,
+    only_marked: bool,
+) -> bool {
+    let is_marked = marked_set.contains(path);
+    if only_marked {
+        is_marked
+    } else if filter_marked {
+        !is_marked
+    } else {
+        true
+    }
+}
+
 fn compare_names(a: &str, b: &str) -> std::cmp::Ordering {
     a.to_lowercase().cmp(&b.to_lowercase())
 }
@@ -187,6 +203,7 @@ fn open_in_file_manager(path: &Path) -> Result<(), String> {
 pub fn load_sketch_folder_data(
     folder_path: String,
     filter_marked: bool,
+    only_marked: bool,
     state: tauri::State<'_, AppState>,
 ) -> Result<SketchFolderDataResponse, String> {
     let directory = fs::read_dir(&folder_path).map_err(|error| error.to_string())?;
@@ -212,19 +229,12 @@ pub fn load_sketch_folder_data(
     let file_paths = files.iter().map(|(_, path)| path.clone()).collect::<Vec<_>>();
     let latest_marks = storage::get_latest_marks_map(&state, &file_paths)?;
 
-    let marked_set = if filter_marked {
-        storage::get_marked_paths_set(&state, &file_paths)?
-    } else {
-        HashSet::new()
-    };
+    let marked_set = storage::get_marked_paths_set(&state, &file_paths)?;
     let eligible_indexes = files
         .iter()
         .enumerate()
         .filter_map(|(index, (_, path))| {
-            if filter_marked && marked_set.contains(path) {
-                return None;
-            }
-            Some(index)
+            matches_mark_filter(path, &marked_set, filter_marked, only_marked).then_some(index)
         })
         .collect::<Vec<_>>();
 
@@ -244,6 +254,7 @@ pub fn load_sketch_folder_data(
 pub fn get_folder_browser_items(
     folder_path: String,
     filter_marked: bool,
+    only_marked: bool,
     state: tauri::State<'_, AppState>,
 ) -> Result<FolderBrowserItemsResponse, String> {
     let directory = fs::read_dir(&folder_path).map_err(|error| error.to_string())?;
@@ -271,14 +282,10 @@ pub fn get_folder_browser_items(
 
     let file_paths = files.iter().map(|(_, path)| path.clone()).collect::<Vec<_>>();
     let marked_set = storage::get_marked_paths_set(&state, &file_paths)?;
-    let filtered_files = if filter_marked {
-        files
-            .into_iter()
-            .filter(|(_, path)| !marked_set.contains(path))
-            .collect::<Vec<_>>()
-    } else {
-        files
-    };
+    let filtered_files = files
+        .into_iter()
+        .filter(|(_, path)| matches_mark_filter(path, &marked_set, filter_marked, only_marked))
+        .collect::<Vec<_>>();
 
     let filtered_file_paths = filtered_files
         .iter()

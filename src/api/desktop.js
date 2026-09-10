@@ -25,8 +25,8 @@ export const desktop = {
     return command("open_folder_dialog", { currentPath: currentPath ?? null });
   },
 
-  async loadSketchFolderData(folderPath, filterMarked) {
-    const response = await command("load_sketch_folder_data", { folderPath, filterMarked });
+  async loadSketchFolderData(folderPath, filterMarked, onlyMarked = false) {
+    const response = await command("load_sketch_folder_data", { folderPath, filterMarked, onlyMarked });
     return {
       ...response,
       files: (response?.files || []).map((item) =>
@@ -41,8 +41,8 @@ export const desktop = {
     };
   },
 
-  async getFolderBrowserItems(folderPath, filterMarked) {
-    const items = await command("get_folder_browser_items", { folderPath, filterMarked });
+  async getFolderBrowserItems(folderPath, filterMarked, onlyMarked = false) {
+    const items = await command("get_folder_browser_items", { folderPath, filterMarked, onlyMarked });
     return (items?.items || []).map((item) =>
       item.type === "file"
         ? {
@@ -58,19 +58,21 @@ export const desktop = {
     return command("get_latest_marks_for_paths", { filePaths });
   },
 
-  async buildPlaybackPlan(imagePaths, filterMarked, isRandom, imageCount = null) {
+  async buildPlaybackPlan(imagePaths, filterMarked, isRandom, imageCount = null, onlyMarked = false) {
     return command("build_playback_plan", {
       imagePaths,
       filterMarked,
+      onlyMarked,
       isRandom,
       imageCount,
     });
   },
 
-  async startSession(imagePaths, filterMarked, isRandom, imageCount = null, displayTime = null, startIndex = null) {
+  async startSession(imagePaths, filterMarked, isRandom, imageCount = null, displayTime = null, startIndex = null, onlyMarked = false) {
     return command("start_session", {
       imagePaths,
       filterMarked,
+      onlyMarked,
       isRandom,
       imageCount,
       displayTime,

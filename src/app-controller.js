@@ -63,7 +63,9 @@ export class AppController {
       isAlwaysOnTop: false,
       isRandomPlayback: true,
       isFilterMarkedEnabled: true,
+      isOnlyMarkedEnabled: false,
       isLibraryFilterMarkedEnabled: false,
+      isLibraryOnlyMarkedEnabled: false,
       isCountdownHidden: false,
       isLightThemeEnabled: false,
       previewBackgroundChoice: "solidColor",
@@ -281,7 +283,9 @@ export class AppController {
       "mainMenuSelectedFolderPath",
       "isRandomPlayback",
       "isFilterMarkedEnabled",
+      "isOnlyMarkedEnabled",
       "isLibraryFilterMarkedEnabled",
+      "isLibraryOnlyMarkedEnabled",
       "isAlwaysOnTop",
       "startupMode",
       "isLightThemeEnabled",
@@ -304,8 +308,20 @@ export class AppController {
     this.state.currentDefaultImageFolderPath = values.defaultImageFolderPath || DEFAULTS.defaultImageFolderPath;
     this.state.mainMenuSelectedFolderPath = values.mainMenuSelectedFolderPath || DEFAULTS.mainMenuSelectedFolderPath;
     this.state.isRandomPlayback = values.isRandomPlayback ?? DEFAULTS.isRandomPlayback;
-    this.state.isFilterMarkedEnabled = values.isFilterMarkedEnabled ?? DEFAULTS.isFilterMarkedEnabled;
-    this.state.isLibraryFilterMarkedEnabled = values.isLibraryFilterMarkedEnabled ?? DEFAULTS.isLibraryFilterMarkedEnabled;
+    this.setPlaybackMarkFilterMode(
+      values.isOnlyMarkedEnabled
+        ? "marked"
+        : (values.isFilterMarkedEnabled ?? DEFAULTS.isFilterMarkedEnabled)
+          ? "unmarked"
+          : "all",
+    );
+    this.setLibraryMarkFilterMode(
+      values.isLibraryOnlyMarkedEnabled
+        ? "marked"
+        : (values.isLibraryFilterMarkedEnabled ?? DEFAULTS.isLibraryFilterMarkedEnabled)
+          ? "unmarked"
+          : "all",
+    );
     this.state.isAlwaysOnTop = values.isAlwaysOnTop ?? DEFAULTS.isAlwaysOnTop;
     this.state.startupMode = values.startupMode ?? DEFAULTS.startupMode;
     this.state.currentLanguage = values.language || DEFAULTS.language;
@@ -378,10 +394,73 @@ export class AppController {
     }
   }
 
+  getPlaybackMarkFilterMode() {
+    if (this.state.isOnlyMarkedEnabled) {
+      return "marked";
+    }
+    return this.state.isFilterMarkedEnabled ? "unmarked" : "all";
+  }
+
+  setPlaybackMarkFilterMode(mode) {
+    this.state.isFilterMarkedEnabled = mode === "unmarked";
+    this.state.isOnlyMarkedEnabled = mode === "marked";
+  }
+
+  getLibraryMarkFilterMode() {
+    if (this.state.isLibraryOnlyMarkedEnabled) {
+      return "marked";
+    }
+    return this.state.isLibraryFilterMarkedEnabled ? "unmarked" : "all";
+  }
+
+  setLibraryMarkFilterMode(mode) {
+    this.state.isLibraryFilterMarkedEnabled = mode === "unmarked";
+    this.state.isLibraryOnlyMarkedEnabled = mode === "marked";
+  }
+
+  getNextMarkFilterMode(mode) {
+    if (mode === "unmarked") {
+      return "marked";
+    }
+    if (mode === "marked") {
+      return "all";
+    }
+    return "unmarked";
+  }
+
+  getMarkFilterTitleKey(mode) {
+    if (mode === "marked") {
+      return "onlyMarked";
+    }
+    if (mode === "unmarked") {
+      return "filterMarked";
+    }
+    return "showAllImages";
+  }
+
+  syncMarkFilterButton(button, mode) {
+    const titleKey = this.getMarkFilterTitleKey(mode);
+    const title = t(titleKey);
+    button.classList.toggle("active", mode !== "all");
+    button.classList.toggle("only-marked", mode === "marked");
+    button.setAttribute("data-i18n-title", titleKey);
+    button.setAttribute("data-tooltip", title);
+    button.setAttribute("aria-label", title);
+    button.setAttribute("aria-pressed", String(mode !== "all"));
+  }
+
+  syncPlaybackFilterButton() {
+    this.syncMarkFilterButton(elements.filterMarkedToggle, this.getPlaybackMarkFilterMode());
+  }
+
+  syncLibraryFilterButton() {
+    this.syncMarkFilterButton(elements.libraryFilterMarkedToggle, this.getLibraryMarkFilterMode());
+  }
+
   syncToggleButtons() {
     elements.randomPlaybackToggle.classList.toggle("active", this.state.isRandomPlayback);
-    elements.filterMarkedToggle.classList.toggle("active", this.state.isFilterMarkedEnabled);
-    elements.libraryFilterMarkedToggle.classList.toggle("active", this.state.isLibraryFilterMarkedEnabled);
+    this.syncPlaybackFilterButton();
+    this.syncLibraryFilterButton();
     elements.mainMenuAlwaysOnTopToggle.classList.toggle("active", this.state.isAlwaysOnTop);
     elements.toggleAlwaysOnTopButton.classList.toggle("active", this.state.isAlwaysOnTop);
     elements.mirrorToggle.classList.toggle("active", this.state.isMirrorEnabled);
@@ -545,6 +624,8 @@ export class AppController {
     }
 
     updatePageI18n();
+    this.syncPlaybackFilterButton();
+    this.syncLibraryFilterButton();
 
     this.setValueIfChanged(
       elements.mainMenuBackgroundPathDisplay,
@@ -574,17 +655,20 @@ export class AppController {
   }
 
   syncStartPageInput() {
-    const total = this.state.imageFiles.length;
+    const total = this.getStartPageTotal();
     elements.startPageRow.classList.toggle("hidden", total === 0);
     this.setTextContentIfChanged(elements.startPageTotalLabel, t("startPageTotal").replace("{count}", total));
     if (!this.state.isRandomPlayback) {
-      this.setValueIfChanged(elements.startPageInput, total === 0 ? 1 : this.state.startImageIndex + 1);
+      this.setValueIfChanged(
+        elements.startPageInput,
+        total === 0 ? 1 : this.getStartPageNumberForRawIndex(this.state.startImageIndex),
+      );
     }
     this.updateStartPageAvailability();
   }
 
   updateStartPageAvailability() {
-    const disabled = this.state.isRandomPlayback || this.state.imageFiles.length === 0;
+    const disabled = this.state.isRandomPlayback || this.getStartPageTotal() === 0;
     elements.startPageInput.disabled = disabled;
     elements.startPageRow.title = this.state.isRandomPlayback
       ? t("startPageRandomOnly")
@@ -970,7 +1054,11 @@ export class AppController {
   }
 
   async loadImagesForSketchFolder(folderPath) {
-    const data = await desktop.loadSketchFolderData(folderPath, this.state.isFilterMarkedEnabled);
+    const data = await desktop.loadSketchFolderData(
+      folderPath,
+      this.state.isFilterMarkedEnabled,
+      this.state.isOnlyMarkedEnabled,
+    );
     const imageFiles = Array.isArray(data?.files) ? data.files : [];
     this.state.imageFiles = imageFiles.map((file) => ({ name: file.name, path: file.originalPath }));
     this.state.imageUrls = imageFiles.map((file) => file.path);
@@ -980,6 +1068,7 @@ export class AppController {
       data?.latestMarks || {},
     );
     this.state.startImageIndex = this.findProgressIndex(this.getCurrentFolderProgress());
+    this.normalizeStartImageIndex();
     this.refreshMainMenuEligibilityState();
     this.setTextContentIfChanged(elements.sketchFolderInputDisplay, folderPath || "点击选择速写文件夹...");
   }
@@ -1043,6 +1132,7 @@ export class AppController {
         this.state.isFilterMarkedEnabled,
         false,
         null,
+        this.state.isOnlyMarkedEnabled,
       );
       this.state.eligibleImageRawIndexes = Array.isArray(result?.eligibleIndexes)
         ? result.eligibleIndexes
@@ -1087,7 +1177,10 @@ export class AppController {
     const fileThumbnailByPath = new Map();
 
     if (this.state.currentFolderItems.length === 0) {
-      this.setTextContentIfChanged(elements.folderBrowserInfoMessage, "当前文件夹为空。");
+      const message = this.getLibraryMarkFilterMode() === "all"
+        ? "当前文件夹为空。"
+        : t("noImagesMatchFilter");
+      this.setTextContentIfChanged(elements.folderBrowserInfoMessage, message);
       elements.folderBrowserInfoMessage.classList.remove("hidden");
     }
 
@@ -1177,6 +1270,10 @@ export class AppController {
           if (currentItem) {
             currentItem.latestMark = null;
           }
+          if (this.getLibraryMarkFilterMode() === "marked") {
+            await this.showFolderBrowserView(this.state.currentLoadedFolderPath);
+            return;
+          }
           info.remove();
           this.updateMarkingUI();
         });
@@ -1210,10 +1307,14 @@ export class AppController {
     elements.selectFolderForSketchAndReturnToMenuButton.disabled = true;
     const parentPath = await desktop.getParentPath(folderPath);
     elements.goUpFolderButton.classList.toggle("hidden", !parentPath);
-    elements.libraryFilterMarkedToggle.classList.toggle("active", this.state.isLibraryFilterMarkedEnabled);
+    this.syncLibraryFilterButton();
 
     try {
-      const items = await desktop.getFolderBrowserItems(folderPath, this.state.isLibraryFilterMarkedEnabled);
+      const items = await desktop.getFolderBrowserItems(
+        folderPath,
+        this.state.isLibraryFilterMarkedEnabled,
+        this.state.isLibraryOnlyMarkedEnabled,
+      );
       this.state.currentFolderItems = items;
       this.state.currentPage = 0;
       await this.renderCurrentPageThumbnails();
@@ -1245,7 +1346,7 @@ export class AppController {
       return;
     }
 
-    this.state.startImageIndex = targetIndex;
+    const targetPageNumber = this.getStartPageNumberForRawIndex(targetIndex);
     if (this.state.isRandomPlayback) {
       this.state.isRandomPlayback = false;
       elements.randomPlaybackToggle.classList.toggle("active", false);
@@ -1253,9 +1354,8 @@ export class AppController {
     }
     this.syncStartPageInput();
     await this.showMainMenu(this.state.currentLoadedFolderPath);
-    this.state.startImageIndex = targetIndex;
-    this.syncStartPageInput();
-    this.setTextContentIfChanged(elements.mainMenuHintText, `已将第 ${targetIndex + 1} 页设为起始页，点击开始速写。`);
+    this.setStartPageNumber(targetPageNumber);
+    this.setTextContentIfChanged(elements.mainMenuHintText, `已将第 ${targetPageNumber} 页设为起始页，点击开始速写。`);
   }
 
   showPreviousPageOfThumbnails() {
@@ -1279,6 +1379,53 @@ export class AppController {
 
   getEligibleImageCount() {
     return this.getEligibleImageRawIndexes().length;
+  }
+
+  getStartPageTotal() {
+    return this.getEligibleImageCount();
+  }
+
+  getStartPageNumberForRawIndex(rawIndex = this.state.startImageIndex) {
+    const eligible = this.getEligibleImageRawIndexes();
+    if (!Array.isArray(eligible) || eligible.length === 0) {
+      return 1;
+    }
+
+    const exactPosition = eligible.indexOf(rawIndex);
+    if (exactPosition >= 0) {
+      return exactPosition + 1;
+    }
+
+    const nextPosition = eligible.findIndex((index) => index >= rawIndex);
+    return nextPosition >= 0 ? nextPosition + 1 : eligible.length;
+  }
+
+  getRawIndexForStartPage(pageNumber) {
+    const eligible = this.getEligibleImageRawIndexes();
+    if (!Array.isArray(eligible) || eligible.length === 0) {
+      return -1;
+    }
+
+    const page = Math.max(1, Math.min(eligible.length, parseInt(`${pageNumber ?? ""}`, 10) || 1));
+    return eligible[page - 1];
+  }
+
+  setStartPageNumber(pageNumber) {
+    const rawIndex = this.getRawIndexForStartPage(pageNumber);
+    if (rawIndex >= 0) {
+      this.state.startImageIndex = rawIndex;
+    }
+    this.syncStartPageInput();
+    this.refreshMainMenuEligibilityState();
+  }
+
+  normalizeStartImageIndex(rawIndex = this.state.startImageIndex) {
+    const pageNumber = this.getStartPageNumberForRawIndex(rawIndex);
+    this.state.startImageIndex = this.getRawIndexForStartPage(pageNumber);
+    if (this.state.startImageIndex < 0) {
+      this.state.startImageIndex = 0;
+    }
+    return this.state.startImageIndex;
   }
 
   getTargetSketchCount(eligibleCount = this.getEligibleImageCount()) {
@@ -1355,6 +1502,7 @@ export class AppController {
         totalImages: this.state.imageFiles.length,
         playbackMode: this.state.isRandomPlayback ? "random" : "sequential",
         filterMarked: this.state.isFilterMarkedEnabled,
+        onlyMarked: this.state.isOnlyMarkedEnabled,
         updatedAt: new Date().toISOString(),
       },
     };
@@ -1365,19 +1513,20 @@ export class AppController {
   }
 
   handleStartPageInput(value) {
-    const total = this.state.imageFiles.length;
+    const total = this.getStartPageTotal();
     const nextPage = parseInt(`${value ?? ""}`.trim(), 10);
     if (!Number.isInteger(nextPage) || nextPage < 1 || total === 0) {
       this.state.startImageIndex = 0;
       this.updateMainMenuHintText();
       return;
     }
-    this.state.startImageIndex = Math.min(total - 1, nextPage - 1);
+
+    this.state.startImageIndex = this.getRawIndexForStartPage(Math.min(total, nextPage));
     this.updateMainMenuHintText();
   }
 
   handleStartPageCommit(value) {
-    const total = this.state.imageFiles.length;
+    const total = this.getStartPageTotal();
     if (total === 0) {
       this.state.startImageIndex = 0;
       this.syncStartPageInput();
@@ -1387,12 +1536,12 @@ export class AppController {
     const nextPage = parseInt(`${value ?? ""}`.trim(), 10);
     if (!Number.isInteger(nextPage) || nextPage < 1 || nextPage > total) {
       this.showAlert(`请输入 1 到 ${total} 之间的页码。`, "页码无效");
-      this.state.startImageIndex = Math.max(0, Math.min(total - 1, this.state.startImageIndex));
+      this.normalizeStartImageIndex();
       this.syncStartPageInput();
       return;
     }
 
-    this.state.startImageIndex = nextPage - 1;
+    this.state.startImageIndex = this.getRawIndexForStartPage(nextPage);
     this.syncStartPageInput();
     this.updateMainMenuHintText();
   }
@@ -1403,8 +1552,10 @@ export class AppController {
       return;
     }
     this.state.startImageIndex = this.findProgressIndex(progress);
+    this.normalizeStartImageIndex();
+    const pageNumber = this.getStartPageNumberForRawIndex(this.state.startImageIndex);
     this.syncStartPageInput();
-    this.setTextContentIfChanged(elements.mainMenuHintText, `已设为上次进度：第 ${this.state.startImageIndex + 1} 页，点击开始速写。`);
+    this.setTextContentIfChanged(elements.mainMenuHintText, `已设为上次进度：第 ${pageNumber} 页，点击开始速写。`);
   }
 
   refreshMainMenuEligibilityState() {
@@ -1415,6 +1566,7 @@ export class AppController {
 
   updateStartButtonState() {
     const eligibleCount = this.getEligibleImageCount();
+    const markFilterMode = this.getPlaybackMarkFilterMode();
     const hasPlayableFromStart = this.state.isRandomPlayback
       ? eligibleCount > 0
       : this.getFirstPlayableIndexFrom(this.state.startImageIndex) >= 0;
@@ -1430,8 +1582,13 @@ export class AppController {
       return;
     }
 
-    if (this.state.mainMenuSelectedFolderPath && this.state.imageUrls.length > 0 && this.state.isFilterMarkedEnabled) {
-      elements.startButton.setAttribute("data-tooltip", "该文件夹下图片已全部标记");
+    if (this.state.mainMenuSelectedFolderPath && this.state.imageUrls.length > 0 && markFilterMode === "unmarked") {
+      elements.startButton.setAttribute("data-tooltip", t("allImagesMarked"));
+      return;
+    }
+
+    if (this.state.mainMenuSelectedFolderPath && this.state.imageUrls.length > 0 && markFilterMode === "marked") {
+      elements.startButton.setAttribute("data-tooltip", t("noMarkedImages"));
       return;
     }
 
@@ -1451,14 +1608,20 @@ export class AppController {
   updateMainMenuHintText() {
     const eligibleCount = this.getEligibleImageCount();
     const targetCount = this.getTargetSketchCount(eligibleCount);
+    const markFilterMode = this.getPlaybackMarkFilterMode();
 
     if (!this.state.mainMenuSelectedFolderPath) {
       this.setTextContentIfChanged(elements.mainMenuHintText, t("selectFolderHint"));
       return;
     }
 
-    if (eligibleCount === 0 && this.state.imageUrls.length > 0 && this.state.isFilterMarkedEnabled) {
+    if (eligibleCount === 0 && this.state.imageUrls.length > 0 && markFilterMode === "unmarked") {
       this.setTextContentIfChanged(elements.mainMenuHintText, t("allMarkedAdjustFilter"));
+      return;
+    }
+
+    if (eligibleCount === 0 && this.state.imageUrls.length > 0 && markFilterMode === "marked") {
+      this.setTextContentIfChanged(elements.mainMenuHintText, t("noMarkedImages"));
       return;
     }
 
@@ -1549,15 +1712,10 @@ export class AppController {
     }
     const startIndex = this.state.isRandomPlayback
       ? null
-      : this.getFirstPlayableIndexFrom(this.state.startImageIndex);
+      : this.normalizeStartImageIndex();
     if (!this.state.isRandomPlayback && startIndex < 0) {
       this.showAlert("当前没有可播放的图片，请关闭过滤或重新选择文件夹。", "无法开始");
       return;
-    }
-    if (!this.state.isRandomPlayback && startIndex !== this.state.startImageIndex) {
-      this.showAlert(`第 ${this.state.startImageIndex + 1} 页不可播放，已从第 ${startIndex + 1} 页开始。`, "起始页已调整");
-      this.state.startImageIndex = startIndex;
-      this.syncStartPageInput();
     }
 
     const imageCount = Number.isFinite(this.state.imageCount) ? this.state.imageCount : null;
@@ -1569,6 +1727,7 @@ export class AppController {
         imageCount,
         Number.isFinite(this.state.displayTime) ? this.state.displayTime : null,
         startIndex,
+        this.state.isOnlyMarkedEnabled,
       );
 
       this.state.eligibleImageRawIndexes = Array.isArray(result?.eligibleIndexes)
@@ -2090,18 +2249,23 @@ export class AppController {
     // 从随机切到顺序时，从输入框当前值同步回 startImageIndex，避免覆盖用户看到的数字
     if (wasRandom && !this.state.isRandomPlayback) {
       const inputValue = parseInt(elements.startPageInput.value, 10);
-      const total = this.state.imageFiles.length;
-      if (!isNaN(inputValue) && inputValue >= 1 && total > 0) {
-        this.state.startImageIndex = Math.min(inputValue - 1, total - 1);
+      const rawIndex = this.getRawIndexForStartPage(inputValue);
+      if (!isNaN(inputValue) && rawIndex >= 0) {
+        this.state.startImageIndex = rawIndex;
       }
     }
     this.refreshMainMenuEligibilityState();
   }
 
   async togglePlaybackFilter() {
-    this.state.isFilterMarkedEnabled = !this.state.isFilterMarkedEnabled;
-    elements.filterMarkedToggle.classList.toggle("active", this.state.isFilterMarkedEnabled);
-    await desktop.saveSetting("isFilterMarkedEnabled", this.state.isFilterMarkedEnabled);
+    const previousPageNumber = this.getStartPageNumberForRawIndex(this.state.startImageIndex);
+    const nextMode = this.getNextMarkFilterMode(this.getPlaybackMarkFilterMode());
+    this.setPlaybackMarkFilterMode(nextMode);
+    this.syncPlaybackFilterButton();
+    await Promise.all([
+      desktop.saveSetting("isFilterMarkedEnabled", this.state.isFilterMarkedEnabled),
+      desktop.saveSetting("isOnlyMarkedEnabled", this.state.isOnlyMarkedEnabled),
+    ]);
     await this.recalculateEligibilityFromBackend();
 
     if (this.isPlaybackVisible()) {
@@ -2109,6 +2273,7 @@ export class AppController {
     } else {
       await this.showMainMenu();
     }
+    this.setStartPageNumber(previousPageNumber);
   }
 
   async selectMainMenuBackgroundImage() {
@@ -2359,9 +2524,13 @@ export class AppController {
   }
 
   async toggleLibraryFilter() {
-    this.state.isLibraryFilterMarkedEnabled = !this.state.isLibraryFilterMarkedEnabled;
-    elements.libraryFilterMarkedToggle.classList.toggle("active", this.state.isLibraryFilterMarkedEnabled);
-    await desktop.saveSetting("isLibraryFilterMarkedEnabled", this.state.isLibraryFilterMarkedEnabled);
+    const nextMode = this.getNextMarkFilterMode(this.getLibraryMarkFilterMode());
+    this.setLibraryMarkFilterMode(nextMode);
+    this.syncLibraryFilterButton();
+    await Promise.all([
+      desktop.saveSetting("isLibraryFilterMarkedEnabled", this.state.isLibraryFilterMarkedEnabled),
+      desktop.saveSetting("isLibraryOnlyMarkedEnabled", this.state.isLibraryOnlyMarkedEnabled),
+    ]);
     await this.showFolderBrowserView(this.state.currentLoadedFolderPath);
   }
 }

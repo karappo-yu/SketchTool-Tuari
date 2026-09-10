@@ -1514,6 +1514,13 @@ body.light-theme #image-navigation-controls button:disabled {
     box-shadow: 0 2px 8px rgba(40, 167, 69, 0.4);
 }
 
+#filter-marked-toggle.only-marked,
+#libraryFilterMarkedToggle.only-marked {
+    background: linear-gradient(135deg, #f59e0b, #d97706);
+    box-shadow: 0 2px 8px rgba(217, 119, 6, 0.42);
+    color: #ffffff;
+}
+
 
 /* Settings modal overlay */
 #settings-modal-overlay {

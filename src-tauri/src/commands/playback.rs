@@ -61,6 +61,22 @@ fn current_queue_index(engine: &SessionEngine) -> Option<usize> {
     engine.queue.iter().position(|index| *index == current)
 }
 
+fn matches_mark_filter(
+    path: &str,
+    marked_set: &HashSet<String>,
+    filter_marked: bool,
+    only_marked: bool,
+) -> bool {
+    let is_marked = marked_set.contains(path);
+    if only_marked {
+        is_marked
+    } else if filter_marked {
+        !is_marked
+    } else {
+        true
+    }
+}
+
 fn to_snapshot(engine: &SessionEngine, marked_path: Option<String>, latest_mark: Option<MarkEntry>) -> SessionSnapshot {
     let current = engine.pointer.and_then(|pointer| engine.history.get(pointer)).copied();
     let has_prev = engine.pointer.map(|pointer| pointer > 0).unwrap_or(false);
@@ -85,24 +101,18 @@ fn to_snapshot(engine: &SessionEngine, marked_path: Option<String>, latest_mark:
 pub fn build_playback_plan(
     image_paths: Vec<String>,
     filter_marked: bool,
+    only_marked: bool,
     is_random: bool,
     image_count: Option<usize>,
     state: tauri::State<'_, AppState>,
 ) -> Result<PlaybackPlanResponse, String> {
-    let marked_set: HashSet<String> = if filter_marked {
-        storage::get_marked_paths_set(&state, &image_paths)?
-    } else {
-        HashSet::new()
-    };
+    let marked_set = storage::get_marked_paths_set(&state, &image_paths)?;
 
     let eligible_indexes = image_paths
         .iter()
         .enumerate()
         .filter_map(|(index, path)| {
-            if filter_marked && marked_set.contains(path) {
-                return None;
-            }
-            Some(index)
+            matches_mark_filter(path, &marked_set, filter_marked, only_marked).then_some(index)
         })
         .collect::<Vec<_>>();
 
@@ -127,26 +137,20 @@ pub fn build_playback_plan(
 pub fn start_session(
     image_paths: Vec<String>,
     filter_marked: bool,
+    only_marked: bool,
     is_random: bool,
     image_count: Option<usize>,
     display_time: Option<i64>,
     start_index: Option<usize>,
     state: tauri::State<'_, AppState>,
 ) -> Result<StartSessionResponse, String> {
-    let marked_set: HashSet<String> = if filter_marked {
-        storage::get_marked_paths_set(&state, &image_paths)?
-    } else {
-        HashSet::new()
-    };
+    let marked_set = storage::get_marked_paths_set(&state, &image_paths)?;
 
     let eligible_indexes = image_paths
         .iter()
         .enumerate()
         .filter_map(|(index, path)| {
-            if filter_marked && marked_set.contains(path) {
-                return None;
-            }
-            Some(index)
+            matches_mark_filter(path, &marked_set, filter_marked, only_marked).then_some(index)
         })
         .collect::<Vec<_>>();
 
