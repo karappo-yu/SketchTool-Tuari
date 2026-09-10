@@ -2258,7 +2258,6 @@ export class AppController {
   }
 
   async togglePlaybackFilter() {
-    const previousPageNumber = this.getStartPageNumberForRawIndex(this.state.startImageIndex);
     const nextMode = this.getNextMarkFilterMode(this.getPlaybackMarkFilterMode());
     this.setPlaybackMarkFilterMode(nextMode);
     this.syncPlaybackFilterButton();
@@ -2273,7 +2272,7 @@ export class AppController {
     } else {
       await this.showMainMenu();
     }
-    this.setStartPageNumber(previousPageNumber);
+    this.setStartPageNumber(1);
   }
 
   async selectMainMenuBackgroundImage() {
