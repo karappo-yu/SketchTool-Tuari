@@ -691,6 +691,8 @@ button[data-tooltip]:hover::before {
     align-items: center;
     flex-direction: column;
     overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
 }
 
 #image-display-area.hidden {
@@ -768,6 +770,8 @@ button[data-tooltip]:hover::before {
     object-fit: contain; /* This is key for fitting without cropping */
     transition: filter 0.5s ease; /* 镜像翻转不做动画，瞬时切换 */
     user-select: none;
+    -webkit-user-select: none;
+    -webkit-user-drag: none;
     pointer-events: none;
 }
 
